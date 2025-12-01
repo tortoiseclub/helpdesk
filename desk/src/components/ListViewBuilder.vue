@@ -12,6 +12,7 @@
         @click="handleViewUpdate"
       />
       <Reload @click="handleReload" :loading="list.loading" />
+      <TagFilter v-if="options.doctype === 'HD Ticket'" />
       <Filter :default_filters="defaultParams.filters" />
       <SortBy :hide-label="isMobileView" />
       <ColumnSettings
@@ -20,7 +21,10 @@
       />
     </div>
     <div v-else class="flex justify-between items-center w-full">
-      <Filter :default_filters="defaultParams.filters" />
+      <div class="flex items-center gap-2">
+        <TagFilter v-if="options.doctype === 'HD Ticket'" />
+        <Filter :default_filters="defaultParams.filters" />
+      </div>
       <div class="flex items-center gap-2">
         <Reload @click="handleReload" :loading="list.loading" />
         <SortBy :hide-label="isMobileView" />
@@ -123,6 +127,7 @@ import {
   QuickFilters,
   Reload,
   SortBy,
+  TagFilter,
 } from "@/components/view-controls";
 import { useScreenSize } from "@/composables/screen";
 import {

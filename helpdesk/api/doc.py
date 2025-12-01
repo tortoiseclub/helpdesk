@@ -324,6 +324,14 @@ def get_filterable_fields(doctype: str, show_customer_portal_fields=False):
                 "options": "HD Agent",
             }
         )
+        res.append(
+            {
+                "fieldname": "_user_tags",
+                "fieldtype": "Data",
+                "label": "Tags",
+                "name": "_user_tags",
+            }
+        )
 
     enable_restrictions = frappe.db.get_single_value(
         "HD Settings", "restrict_tickets_by_agent_group"

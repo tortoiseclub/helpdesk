@@ -37,6 +37,16 @@
 
         <!-- Assignee component -->
         <AssignTo />
+        <!-- Tags Section -->
+        <div class="mt-3">
+        <TicketTags
+            v-if="ticket?.name"
+            :ticketId="ticket.name"
+            :modelValue="ticketTags"
+            :canEdit="true"
+            @update:modelValue="handleTagsUpdate"
+          />
+        </div>
       </div>
     </div>
 
@@ -72,9 +82,11 @@ import {
   CustomizationSymbol,
   FieldValue,
   TicketSymbol,
+  TicketTagsSymbol,
 } from "@/types";
 import { computed, inject, ref } from "vue";
 import TicketField from "../TicketField.vue";
+import TicketTags from "../ticket/TicketTags.vue";
 import AssignTo from "./AssignTo.vue";
 import TicketContact from "./TicketContact.vue";
 
@@ -82,8 +94,9 @@ const ticket = inject(TicketSymbol);
 const assignees = inject(AssigneeSymbol);
 const customizations = inject(CustomizationSymbol);
 const activities = inject(ActivitiesSymbol);
+const ticketTagsResource = inject(TicketTagsSymbol);
 const { getFields, getField } = getMeta("HD Ticket");
-const { notifyTicketUpdate } = useNotifyTicketUpdate(ticket.value?.name);
+const { notifyTicketUpdate } = useNotifyTicketUpdate(ticket?.value?.name);
 
 // ticket_type, priority, customer, agent_group
 const coreFields = computed(() => {
@@ -186,6 +199,17 @@ function handleFieldUpdate(
 
     //show error toast
   );
+}
+
+// Tags handling
+const ticketTags = computed(() => {
+  return ticketTagsResource?.value?.data || [];
+});
+
+function handleTagsUpdate(newTags: string[]) {
+  // Reload tags resource to get updated data
+  ticketTagsResource?.value?.reload();
+  activities.value.reload();
 }
 
 const fieldRefs = ref<Record<string, any>>({});

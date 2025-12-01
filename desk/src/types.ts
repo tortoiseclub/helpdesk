@@ -103,6 +103,7 @@ export interface Ticket {
   history: Activity[];
   template: Template;
   views: ViewLog[];
+  tags?: string[];
   _customActions: Function[];
   is_merged?: boolean;
   status_category: "Open" | "Paused" | "Resolved";
@@ -517,6 +518,10 @@ export const RecentSimilarTicketsSymbol: InjectionKey<
 export const ActivitiesSymbol: InjectionKey<
   ComputedRef<Resource<TicketActivities>>
 > = Symbol("activities");
+
+export const TicketTagsSymbol: InjectionKey<
+  ComputedRef<Resource<string[]>>
+> = Symbol("ticketTags");
 
 declare global {
   interface Window {
