@@ -329,6 +329,14 @@ def get_filterable_fields(
                 "options": "HD Agent",
             }
         )
+        res.append(
+            {
+                "fieldname": "_user_tags",
+                "fieldtype": "Data",
+                "label": "Tags",
+                "name": "_user_tags",
+            }
+        )
 
     if not ignore_team_restrictions:
         enable_restrictions = frappe.db.get_single_value(

@@ -37,6 +37,7 @@ import {
   Resource,
   TicketContactSymbol,
   TicketSymbol,
+  TicketTagsSymbol,
 } from "@/types";
 import { createResource, toast, usePageMeta } from "frappe-ui";
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from "vue";
@@ -84,6 +85,10 @@ provide(
 provide(
   ActivitiesSymbol,
   computed(() => ticketComposable.value.activities)
+);
+provide(
+  TicketTagsSymbol,
+  computed(() => ticketComposable.value.tags)
 );
 provide("makeCall", () => {
   if (

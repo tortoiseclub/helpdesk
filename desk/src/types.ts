@@ -213,6 +213,7 @@ export interface Ticket {
   history: Activity[];
   template: Template;
   views: ViewLog[];
+  tags?: string[];
   _customActions: Function[];
   is_merged?: boolean;
   status_category: "Open" | "Paused" | "Resolved";
@@ -693,6 +694,10 @@ export const SlaPolicyListResourceSymbol: InjectionKey<
 
 export const TeamListResourceSymbol: InjectionKey<ListResource<Team>> =
   Symbol("teamListResource");
+
+export const TicketTagsSymbol: InjectionKey<
+  ComputedRef<Resource<string[]>>
+> = Symbol("ticketTags");
 
 declare global {
   interface Window {

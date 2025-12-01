@@ -942,6 +942,12 @@ class HDTicket(Document):
                 "width": "8rem",
             },
             {
+                "label": "Tags",
+                "type": "Data",
+                "key": "_user_tags",
+                "width": "14rem",
+            },
+            {
                 "label": "Assigned To",
                 "type": "MultipleAvatar",
                 "key": "_assign",
@@ -1066,6 +1072,7 @@ class HDTicket(Document):
             "creation",
             "_assign",
             "resolution_date",
+            "_user_tags",
         ]
         return {
             "columns": customer_portal_columns

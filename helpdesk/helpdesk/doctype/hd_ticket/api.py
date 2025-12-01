@@ -266,6 +266,13 @@ def get_tags(ticket: str):
     return res
 
 
+@frappe.whitelist()
+def get_ticket_tags(ticket: str):
+    """Get tags for a ticket - whitelisted endpoint for frontend"""
+    check_permissions("HD Ticket", None, doc=ticket)
+    return get_tags(ticket)
+
+
 def get_call_logs(ticket: str):
     linked_calls = frappe.db.get_all(
         "Dynamic Link",

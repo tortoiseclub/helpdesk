@@ -15,6 +15,7 @@ interface MapValue {
   contact: Resource<TicketContact>;
   recentSimilarTickets: Resource<RecentSimilarTicket>;
   activities: Resource<TicketActivities>;
+  tags: Resource<string[]>;
 }
 
 const ticketMap: Record<string, MapValue> = reactive({});
@@ -31,7 +32,7 @@ export const useTicket = (ticketId: string): MapValue => {
         },
         setValue: {
           onSuccess: () => {
-            toast.success(__("Ticket updated"));
+            toast.success("Ticket updated");
             err = false;
           },
           onError: (error) => {
@@ -69,6 +70,12 @@ export const useTicket = (ticketId: string): MapValue => {
         url: "helpdesk.helpdesk.doctype.hd_ticket.api.get_ticket_activities",
         params: { ticket: ticketId },
         auto: true,
+      }),
+      tags: createResource({
+        url: "helpdesk.helpdesk.doctype.hd_ticket.api.get_ticket_tags",
+        params: { ticket: ticketId },
+        auto: true,
+        transform: (data: string[]) => data || [],
       }),
     };
   }

@@ -131,4 +131,8 @@ export interface HDTicket extends DocType {
   key?: string;
   /** Status Category: Data */
   status_category?: string;
+  /** Tags: Small Text */
+  _user_tags?: string;
+  /** Tags (array): for frontend use */
+  tags?: string[]; 
 }

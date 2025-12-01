@@ -51,6 +51,11 @@
       v-model="viewDialog"
       @update="(view, action) => handleView(view, action)"
     />
+    <BulkTagModal
+      v-model="showBulkTagModal"
+      :ticketIds="Array.from(listSelections)"
+      @success="handleBulkTagSuccess"
+    />
   </div>
 </template>
 
@@ -64,6 +69,7 @@ import {
   UnpinIcon,
 } from "@/components/icons";
 import ExportModal from "@/components/ticket/ExportModal.vue";
+import BulkTagModal from "@/components/modals/BulkTagModal.vue";
 import ViewBreadcrumbs from "@/components/ViewBreadcrumbs.vue";
 import ViewModal from "@/components/ViewModal.vue";
 import { currentView, useView } from "@/composables/useView";
@@ -77,6 +83,7 @@ import { Badge, FeatherIcon, toast, Tooltip, usePageMeta } from "frappe-ui";
 import { computed, h, onMounted, onUnmounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { __ } from "@/translation";
+import LucideTag from "~icons/lucide/tag";
 
 const router = useRouter();
 const route = useRoute();
@@ -96,6 +103,7 @@ const { isManager } = useAuthStore();
 
 const listViewRef = ref(null);
 const showExportModal = ref(false);
+const showBulkTagModal = ref(false);
 
 const { getStatus } = useTicketStatusStore();
 
@@ -107,6 +115,14 @@ const selectBannerActions = [
     onClick: (selections: Set<string>) => {
       listSelections.value = new Set(selections);
       showExportModal.value = true;
+    },
+  },
+  {
+    label: "Add Tags",
+    icon: h(LucideTag, { class: "h-4 w-4" }),
+    onClick: (selections: Set<string>) => {
+      listSelections.value = new Set(selections);
+      showBulkTagModal.value = true;
     },
   },
 ];
@@ -144,6 +160,48 @@ const options = {
     },
     resolution_by: {
       custom: ({ row, item }) => handle_resolution_by_field(row, item),
+    },
+    _user_tags: {
+      custom: ({ item }) => {
+        // Handle null/undefined/empty
+        if (!item || typeof item !== 'string') return h("span", { class: "text-ink-gray-4" }, "—");
+        
+        // Parse tags from comma-separated string (tags start with comma like ",tag1,tag2")
+        const tagsArray = item
+          .split(',')
+          .map(t => t.trim())
+          .filter(t => t.length > 0);
+        
+        if (tagsArray.length === 0) return h("span", { class: "text-ink-gray-4" }, "—");
+        
+        // Show max 2 tags in list view to save space
+        const maxVisible = 2;
+        const visibleTags = tagsArray.slice(0, maxVisible);
+        const remainingCount = tagsArray.length - maxVisible;
+        
+        return h(
+          "div",
+          { class: "flex gap-1 flex-wrap items-center" },
+          [
+            ...visibleTags.map(tag =>
+              h(Badge, {
+                label: tag,
+                theme: "gray",
+                variant: "subtle",
+                class: "truncate max-w-[80px]",
+              })
+            ),
+            ...(remainingCount > 0
+              ? [h(Badge, {
+                  label: `+${remainingCount}`,
+                  theme: "gray",
+                  variant: "subtle",
+                })]
+              : []
+            ),
+          ]
+        );
+      },
     },
   },
   isCustomerPortal: isCustomerPortal.value,
@@ -256,6 +314,11 @@ function reset(reload = false) {
   listViewRef.value?.unselectAll();
   listSelections.value?.clear();
   if (reload) listViewRef.value.reload();
+}
+
+function handleBulkTagSuccess() {
+  reset(true);
+  showBulkTagModal.value = false;
 }
 
 const slaStatusColorMap = {
