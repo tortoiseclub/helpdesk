@@ -900,6 +900,43 @@ class HDTicket(Document):
         self.description = self.description or c.content
         # Save the ticket, allowing for hooks to run.
         self.save()
+        
+        # Trigger AI summary generation in background
+        self._trigger_ai_summary_generation()
+
+    def _trigger_ai_summary_generation(self):
+        """Trigger AI summary generation as a background job if enabled."""
+        try:
+            if not frappe.db.get_single_value("HD Settings", "enable_ai_summary"):
+                return
+            
+            # Enqueue background job for summary generation
+            frappe.enqueue(
+                "helpdesk.api.ai.generate_summary_on_communication",
+                ticket_id=self.name,
+                queue="short",
+                enqueue_after_commit=True,
+            )
+        except Exception as e:
+            # Log error but don't fail the main operation
+            frappe.log_error(
+                message=f"Failed to enqueue AI summary generation for ticket {self.name}: {str(e)}",
+                title="AI Summary Enqueue Failed"
+            )
+
+    @frappe.whitelist()
+    def regenerate_summary(self):
+        """
+        Manually regenerate the AI summary for this ticket.
+        Can be called from the frontend.
+        """
+        from helpdesk.api.ai import generate_ticket_summary
+        
+        result = generate_ticket_summary(self.name, force=True)
+        if result.get("success"):
+            self.reload()
+            return {"success": True, "summary": result.get("summary")}
+        return result
 
     def attach_file_with_doc(self, doctype, docname, file_url):
         file_doc = frappe.new_doc("File")
