@@ -905,27 +905,34 @@ class HDTicket(Document):
         # Save the ticket, allowing for hooks to run.
         self.save()
         
-        # Trigger AI summary generation in background
-        self._trigger_ai_summary_generation()
+        # Trigger AI processing (summary + tags) in background
+        self._trigger_ai_processing()
 
-    def _trigger_ai_summary_generation(self):
-        """Trigger AI summary generation as a background job if enabled."""
+    def _trigger_ai_processing(self):
+        """
+        Trigger AI processing (summary generation and tag annotation) as background jobs.
+        This method is designed to be hook-friendly and can be easily moved to hooks.py.
+        
+        Note: Settings checks are done inside the background job functions (DRY principle).
+        """
+        from helpdesk.api.ai import is_ai_enabled
+        
+        # Quick check to avoid unnecessary enqueue if AI is completely disabled
+        if not is_ai_enabled():
+            return
+        
         try:
-            if not frappe.db.get_single_value("HD Settings", "enable_ai_summary"):
-                return
-            
-            # Enqueue background job for summary generation
+            # Enqueue AI processing - the job functions handle their own settings checks
             frappe.enqueue(
-                "helpdesk.api.ai.generate_summary_on_communication",
+                "helpdesk.api.ai.process_ticket_with_ai",
                 ticket_id=self.name,
                 queue="short",
                 enqueue_after_commit=True,
             )
         except Exception as e:
-            # Log error but don't fail the main operation
             frappe.log_error(
-                message=f"Failed to enqueue AI summary generation for ticket {self.name}: {str(e)}",
-                title="AI Summary Enqueue Failed"
+                message=f"Failed to enqueue AI processing for ticket {self.name}: {str(e)}",
+                title="AI Processing Enqueue Failed"
             )
 
     @frappe.whitelist()
@@ -940,6 +947,17 @@ class HDTicket(Document):
         if result.get("success"):
             self.reload()
             return {"success": True, "summary": result.get("summary")}
+        return result
+
+    @frappe.whitelist()
+    def annotate_tags(self):
+        """
+        Use AI to analyze the ticket and automatically assign relevant tags.
+        Can be called from the frontend.
+        """
+        from helpdesk.api.ai import annotate_tags
+        
+        result = annotate_tags(self.name)
         return result
 
     def attach_file_with_doc(self, doctype, docname, file_url):

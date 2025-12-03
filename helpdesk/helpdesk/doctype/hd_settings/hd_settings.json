@@ -20,6 +20,7 @@
   "ai_tab",
   "ai_settings_section",
   "enable_ai_summary",
+  "enable_ai_tag_annotation",
   "ai_provider",
   "ai_model",
   "column_break_ai_1",
@@ -482,6 +483,14 @@
    "fieldname": "enable_ai_summary",
    "fieldtype": "Check",
    "label": "Enable AI Summary"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.enable_ai_summary",
+   "description": "When enabled, AI will automatically suggest and apply relevant tags to tickets when new communications are added.",
+   "fieldname": "enable_ai_tag_annotation",
+   "fieldtype": "Check",
+   "label": "Enable AI Tag Annotation"
   },
   {
    "depends_on": "eval:doc.enable_ai_summary",
