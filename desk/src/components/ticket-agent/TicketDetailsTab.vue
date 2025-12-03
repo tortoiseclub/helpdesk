@@ -5,6 +5,9 @@
     <div class="px-5 pb-4 flex flex-col">
       <!-- User avatar with buttons -->
       <TicketContact />
+      
+      <!-- AI Summary Section -->
+      <TicketSummary class="border-b border-outline-gray-2 mb-3" />
       <!-- Core Fields -->
       <div>
         <div
@@ -89,6 +92,7 @@ import TicketField from "../TicketField.vue";
 import TicketTags from "../ticket/TicketTags.vue";
 import AssignTo from "./AssignTo.vue";
 import TicketContact from "./TicketContact.vue";
+import TicketSummary from "./TicketSummary.vue";
 
 const ticket = inject(TicketSymbol);
 const assignees = inject(AssigneeSymbol);

@@ -15,6 +15,19 @@
             <LucideX class="size-3" />
           </template>
         </Button>
+        <Button
+          v-if="canEdit && !showInput && isAiEnabled"
+          variant="ghost"
+          size="sm"
+          @click="autoTagWithAI"
+          :disabled="isAutoTagging"
+          title="Auto-tag with AI"
+        >
+          <template #icon>
+            <LucideLoader2 v-if="isAutoTagging" class="size-3 animate-spin" />
+            <LucideSparkles v-else class="size-3" />
+          </template>
+        </Button>
       <Button
         v-if="canEdit && !showInput"
         variant="ghost"
@@ -108,10 +121,11 @@
 
 <script setup lang="ts">
 import { Autocomplete, Badge, Button, FormControl, toast } from "frappe-ui";
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import LucidePlus from "~icons/lucide/plus";
 import LucideX from "~icons/lucide/x";
 import LucideLoader2 from "~icons/lucide/loader-2";
+import LucideSparkles from "~icons/lucide/sparkles";
 import { createResource } from "frappe-ui";
 
 const props = defineProps<{
@@ -130,6 +144,59 @@ const showInput = ref(false);
 const newTagInput = ref<string | { label: string; value: string }>("");
 const tagInputRef = ref<InstanceType<typeof FormControl> | null>(null);
 const tagBeingRemoved = ref("");
+const isAutoTagging = ref(false);
+
+// Check if AI tag annotation is enabled
+const aiTagAnnotationEnabledResource = createResource({
+  url: "helpdesk.api.ai.is_ai_tag_annotation_enabled",
+  auto: true,
+});
+
+const isAiEnabled = computed(() => {
+  return aiTagAnnotationEnabledResource.data === true;
+});
+
+// Resource to auto-tag with AI
+const autoTagResource = createResource({
+  url: "run_doc_method",
+  onSuccess: (response: any) => {
+    isAutoTagging.value = false;
+    const data = response?.message || response;
+    
+    if (data?.success) {
+      const tagsAdded = data.tags_added || [];
+      const alreadyPresent = data.tags_already_present || [];
+      
+      if (tagsAdded.length > 0) {
+        // Update the tags list
+        const newTags = [...tags.value, ...tagsAdded];
+        emit("update:modelValue", newTags);
+        toast.success(`Added ${tagsAdded.length} tag(s): ${tagsAdded.join(", ")}`);
+      } else if (alreadyPresent.length > 0) {
+        toast.info("Suggested tags are already present on this ticket");
+      } else {
+        toast.info(data.message || "No relevant tags found");
+      }
+    } else {
+      toast.error(data?.message || "Failed to auto-tag");
+    }
+  },
+  onError: (error: Error) => {
+    isAutoTagging.value = false;
+    toast.error(error?.message || "Failed to auto-tag with AI");
+  },
+});
+
+function autoTagWithAI() {
+  if (isAutoTagging.value || !props.ticketId) return;
+  
+  isAutoTagging.value = true;
+  autoTagResource.submit({
+    dt: "HD Ticket",
+    dn: props.ticketId,
+    method: "annotate_tags",
+  });
+}
 
 // Helper to get string value from input (handles both string and object)
 function getInputValue(): string {
@@ -292,6 +359,10 @@ watch(showInput, async (value) => {
     const input = tagInputRef.value?.$el?.querySelector("input");
     input?.focus();
   }
+});
+
+onMounted(() => {
+  aiTagAnnotationEnabledResource.reload();
 });
 </script>
 
