@@ -1167,6 +1167,44 @@ class HDTicket(Document):
         return fields
 
 
+@frappe.whitelist()
+def update_ticket_status_by_message_id(
+    message_id: str | None = None, status: str | None = None
+):
+    message_id = (message_id or "").strip()
+    status = (status or "").strip()
+
+    if not message_id or not status:
+        frappe.throw(_("Both message_id and status are required"))
+
+    if not frappe.db.exists("HD Ticket Status", status):
+        frappe.throw(
+            _("Invalid ticket status: {0}").format(status), frappe.ValidationError
+        )
+
+    communication = frappe.db.get_value(
+        "Communication",
+        {"message_id": message_id, "reference_doctype": "HD Ticket"},
+        ["name", "reference_name"],
+        as_dict=True,
+    )
+
+    if not communication:
+        frappe.local.response["http_status_code"] = 404
+        return {"error": _("Communication not found for message_id")}
+
+    ticket_name = communication.reference_name
+    if not ticket_name or not frappe.db.exists("HD Ticket", ticket_name):
+        frappe.local.response["http_status_code"] = 404
+        return {"error": _("Ticket not found for the message_id")}
+
+    ticket = frappe.get_doc("HD Ticket", ticket_name)
+    ticket.status = status
+    ticket.save(ignore_permissions=True)
+
+    return {"ticket": ticket.name, "status": ticket.status}
+
+
 # Check if `user` has access to this specific ticket (`doc`). This implements extra
 # permission checks which is not possible with standard permission system. This function
 # is being called from hooks. `doc` is the ticket to check against
@@ -1348,3 +1386,4 @@ def close_tickets_after_n_days():
         doc.flags.ignore_validate = True
         doc.save(ignore_permissions=True)
         frappe.db.commit()  # nosemgrep
+
