@@ -609,6 +609,9 @@ class HDTicket(Document):
 
         message = self.parse_content(message)
 
+        if hasattr(sender_email, "signature"):
+            message = message + "\n\n" + sender_email.signature
+
         reply_to_email = sender_email.email_id
         rendered_template: str | None = None
         if self.via_customer_portal:
