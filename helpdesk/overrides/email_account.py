@@ -4,6 +4,27 @@ import frappe
 from frappe import _
 from frappe.email.doctype.email_account.email_account import EmailAccount
 from frappe.email.receive import InboundMail
+from frappe.utils import sanitize_email
+
+
+class CustomInboundMail(InboundMail):
+    """
+    Custom InboundMail class that sanitizes email fields to handle malformed
+    email addresses with special characters in display names.
+
+    For example, an email like:
+    '"IN,\\r\\n ACME" <in.acme@xyz.com>'
+    contains a comma and newline in the display name, which causes parsing
+    issues downstream when creating contacts.
+    """
+
+    def as_dict(self):
+        data = super().as_dict()
+        # Sanitize email fields to filter out malformed email addresses
+        for field in ("recipients", "cc", "bcc"):
+            if data.get(field):
+                data[field] = sanitize_email(data[field])
+        return data
 
 
 class CustomEmailAccount(EmailAccount):
@@ -29,7 +50,7 @@ class CustomEmailAccount(EmailAccount):
                     )
                     seen_status = messages.get("seen_status", {}).get(uid)
                     if self.email_sync_option != "UNSEEN" or seen_status != "SEEN":
-                        _inbound_mail = InboundMail(
+                        _inbound_mail = CustomInboundMail(
                             message,
                             self,
                             frappe.safe_decode(uid),
