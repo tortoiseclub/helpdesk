@@ -1,0 +1,236 @@
+diff --git a/frappe/email/doctype/email_account/email_account.py b/frappe/email/doctype/email_account/email_account.py
+index 3b882cb..fa25879 100755
+--- a/frappe/email/doctype/email_account/email_account.py
++++ b/frappe/email/doctype/email_account/email_account.py
+@@ -7,6 +7,7 @@ import imaplib
+ import time
+ from datetime import datetime, timedelta
+ from poplib import error_proto
++from contextlib import suppress
+ 
+ import frappe
+ from frappe import _, are_emails_muted, safe_encode
+@@ -16,7 +17,7 @@ from frappe.email.receive import EmailServer, InboundMail, SentEmailInInboxError
+ from frappe.email.smtp import SMTPServer
+ from frappe.email.utils import get_port
+ from frappe.model.document import Document
+-from frappe.utils import cint, comma_or, cstr, parse_addr, validate_email_address
++from frappe.utils import cint, comma_or, cstr, get_datetime, parse_addr, validate_email_address
+ from frappe.utils.background_jobs import enqueue, get_jobs
+ from frappe.utils.jinja import render_template
+ from frappe.utils.user import get_system_managers
+@@ -568,10 +569,116 @@ class EmailAccount(Document):
+ 					frappe.db.commit()
+ 			else:
+ 				frappe.db.commit()
+-
+ 		if exceptions:
+ 			raise Exception(frappe.as_json(exceptions))
+ 
++	def sync_from_timestamp(self, from_timestamp, to_timestamp = None, folder_name="INBOX", subject=None):
++		"""Manually pull mails from a folder since a given timestamp (optional subject filter).
++
++		Usage (frappe console):
++		>>> acc = frappe.get_doc("Email Account", "Support")
++		>>> acc.sync_from_timestamp("2025-11-20 00:00:00", "2025-11-20 23:59:59", folder_name="INBOX", subject="Invoice 123")
++		"""
++
++		if not self.enable_incoming:
++			return []
++		if not self.use_imap:
++			frappe.throw(_("Timestamp-based sync is only available for IMAP accounts."))
++
++		from_dt = get_datetime(from_timestamp)
++		since_key = from_dt.strftime("%d-%b-%Y")
++
++		subject_filter = subject.strip() if subject else None
++		if subject_filter:
++			subject_filter = subject_filter.replace('"', r"\"")
++
++		email_sync_rule = f"SINCE {since_key}"
++
++		if to_timestamp:
++			to_dt = get_datetime(to_timestamp)
++			to_key = to_dt.strftime("%d-%b-%Y")
++			email_sync_rule = f"{email_sync_rule} BEFORE {to_key}"
++
++		if subject_filter:
++			email_sync_rule = f'{email_sync_rule} SUBJECT "{subject_filter}"'
++
++		# Get append_to + uidvalidity for this folder (if configured)
++		folder_meta = frappe.db.get_value(
++			"IMAP Folder",
++			{"parent": self.name, "folder_name": folder_name},
++			["uidvalidity", "append_to"],
++			as_dict=True,
++		)
++
++		results, exceptions = [], []
++
++		email_server = None
++		try:
++			email_server = self.get_incoming_server(in_receive=True, email_sync_rule=email_sync_rule)
++
++			if folder_meta and folder_meta.uidvalidity:
++				email_server.settings["uid_validity"] = folder_meta.uidvalidity
++
++			if not email_server.select_imap_folder(folder_name):
++				return []
++
++			search_status, search_data = email_server.imap.uid("search", None, email_sync_rule)
++
++			uid_list = search_data[0].split() if search_data and search_data[0] else []
++
++			# Fetch messages (includes IMAP fetch of bodies)
++			messages = email_server.get_messages(folder=f'"{folder_name}"', use_chunking=True, chunk_size=100) or {}
++			print(f"Messages fetched: {len(messages.get('latest_messages', []))}")
++
++			for index, message in enumerate(messages.get("latest_messages", [])):
++				uid_list = messages.get("uid_list") or []
++				uid = uid_list[index] if index < len(uid_list) else None
++				seen_status = messages.get("seen_status", {}).get(uid)
++
++				# For targeted re-syncs we process everything returned by the server
++				inbound_mail = InboundMail(
++					message,
++					self,
++					frappe.safe_decode(uid),
++					seen_status,
++					(folder_meta and folder_meta.append_to) or None,
++				)
++
++				try:
++					communication = inbound_mail.process()
++					frappe.db.commit()
++
++					if communication and inbound_mail.flags.is_new_communication:
++						if self.enable_auto_reply:
++							self.send_auto_reply(communication, inbound_mail)
++
++						communication.send_email(is_inbound_mail_communcation=True)
++
++					results.append(
++						{
++							"uid": frappe.safe_decode(uid),
++							"message_id": inbound_mail.message_id,
++							"communication": communication.name if communication else None,
++							"status": "created" if inbound_mail.flags.is_new_communication else "existing",
++						}
++					)
++				except SentEmailInInboxError:
++					frappe.db.rollback()
++				except Exception:
++					frappe.db.rollback()
++					self.log_error(title="EmailAccount.sync_from_timestamp")
++					exceptions.append(frappe.get_traceback())
++					frappe.db.commit()
++				else:
++					frappe.db.commit()
++			return results
++		finally:
++			with suppress(Exception):
++				if email_server:
++					email_server.logout()
++			if exceptions:
++				raise Exception(frappe.as_json(exceptions))
++
+ 	def get_inbound_mails(self) -> list[InboundMail]:
+ 		"""retrive and return inbound mails."""
+ 		mails = []
+diff --git a/frappe/email/receive.py b/frappe/email/receive.py
+index cd79c49..4169316 100644
+--- a/frappe/email/receive.py
++++ b/frappe/email/receive.py
+@@ -171,8 +171,11 @@ class EmailServer:
+ 			self.logout()
+ 		return
+ 
+-	def get_messages(self, folder="INBOX"):
+-		"""Returns new email messages."""
++	def get_messages(self, folder="INBOX", use_chunking = False, chunk_size = 100):
++		"""Returns new email messages.
++
++		For IMAP, messages are fetched in chunks of `chunk_size` UIDs to reduce round trips.
++		"""
+ 
+ 		self.latest_messages = []
+ 		self.seen_status = {}
+@@ -180,12 +183,20 @@ class EmailServer:
+ 
+ 		email_list = self.get_new_mails(folder)
+ 
+-		for i, uid in enumerate(email_list[:100]):
+-			try:
+-				self.retrieve_message(uid, i + 1, folder)
+-			except (_socket.timeout, LoginLimitExceeded):
+-				# get whatever messages were retrieved
+-				break
++		if use_chunking and cint(self.settings.use_imap):
++			for i in range(0, len(email_list), chunk_size):
++				chunk = email_list[i : i + chunk_size]
++				try:
++					self.retrieve_messages_chunk(chunk, folder)
++				except (_socket.timeout, LoginLimitExceeded):
++					break
++		else:
++			for i, uid in enumerate(email_list[:100]):
++				try:
++					self.retrieve_message(uid, i + 1, folder)
++				except (_socket.timeout, LoginLimitExceeded):
++					# get whatever messages were retrieved so far
++					break
+ 
+ 		out = {"latest_messages": self.latest_messages}
+ 		if self.settings.use_imap:
+@@ -195,6 +206,38 @@ class EmailServer:
+ 
+ 		return out
+ 
++	def retrieve_messages_chunk(self, uids, folder):
++		if not uids:
++			return
++
++		try:
++			status, data = self.imap.uid("fetch", b",".join(uids), "(BODY.PEEK[] BODY.PEEK[HEADER] FLAGS)")
++			if status != "OK" or not data:
++				return
++
++			for item in data:
++				# Each item is typically a tuple of (meta, raw_bytes)
++				if not item or not isinstance(item, tuple) or len(item) < 2:
++					continue
++
++				meta, raw = item[0], item[1]
++				uid = self.parse_imap_response("UID", meta) or None
++				if uid:
++					self.get_email_seen_status(uid, meta)
++				self.latest_messages.append(raw)
++				self._post_retrieve_cleanup(uid, None)
++		except _socket.timeout:
++			raise
++		except imaplib.IMAP4.abort:
++			if self.retry_count < self.retry_limit:
++				self.connect()
++				self.retry_count += 1
++				self.get_messages(folder, chunk_size=len(uids))
++		except Exception as e:
++			if self.has_login_limit_exceeded(e):
++				raise LoginLimitExceeded(e)
++			frappe.log_error("Unable to fetch email (chunk)", self.make_error_msg(None, None))
++
+ 	def get_new_mails(self, folder):
+ 		"""Return list of new mails"""
+ 		email_list = []
+diff --git a/frappe/utils/pdf.py b/frappe/utils/pdf.py
+index 4115116..3057876 100644
+--- a/frappe/utils/pdf.py
++++ b/frappe/utils/pdf.py
+@@ -151,7 +151,7 @@ def prepare_options(html, options):
+ 			"quiet": None,
+ 			# 'no-outline': None,
+ 			"encoding": "UTF-8",
+-			# 'load-error-handling': 'ignore'
++			"load-error-handling": "ignore"
+ 		}
+ 	)
+ 
