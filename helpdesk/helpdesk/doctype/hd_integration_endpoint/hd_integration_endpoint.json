@@ -1,0 +1,100 @@
+{
+  "actions": [],
+  "creation": "2025-12-16 12:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "app_name",
+    "action_name",
+    "column_break_1",
+    "endpoint_path",
+    "http_method",
+    "section_break_2",
+    "additional_headers",
+    "query_param_mappings",
+    "section_break_3",
+    "enabled"
+  ],
+  "fields": [
+    {
+      "fieldname": "app_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "App Name",
+      "reqd": 1,
+      "description": "Name of the external app (must match an App Name in the Apps table)"
+    },
+    {
+      "fieldname": "action_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Action Name",
+      "reqd": 1,
+      "description": "Unique identifier for this action (e.g., 'get_employee_data', 'create_order')"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "endpoint_path",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Endpoint Path",
+      "reqd": 1,
+      "description": "Relative path for the endpoint (e.g., '/api/v1/employee/')"
+    },
+    {
+      "default": "GET",
+      "fieldname": "http_method",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "HTTP Method",
+      "options": "GET\nPOST\nPUT\nPATCH\nDELETE",
+      "reqd": 1
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "section_break_2",
+      "fieldtype": "Section Break",
+      "label": "Advanced Configuration"
+    },
+    {
+      "fieldname": "additional_headers",
+      "fieldtype": "Code",
+      "label": "Additional Headers (JSON)",
+      "options": "JSON",
+      "description": "Additional HTTP headers in JSON format (e.g., {\"X-Custom-Header\": \"value\"})"
+    },
+    {
+      "fieldname": "query_param_mappings",
+      "fieldtype": "Code",
+      "label": "Query Parameter Mappings (JSON)",
+      "options": "JSON",
+      "description": "Mapping of parameter names (e.g., {\"email\": \"user_email\"})"
+    },
+    {
+      "fieldname": "section_break_3",
+      "fieldtype": "Section Break"
+    },
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "label": "Enabled"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 1,
+  "links": [],
+  "modified": "2025-12-16 12:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Helpdesk",
+  "name": "HD Integration Endpoint",
+  "owner": "Administrator",
+  "permissions": [],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": []
+}
