@@ -92,7 +92,7 @@ import LucideSparkles from "~icons/lucide/sparkles";
 
 const ticket = inject(TicketSymbol);
 
-const isExpanded = ref(true);
+const isExpanded = ref(false);
 const isLoading = ref(false);
 const errorMessage = ref("");
 const localSummary = ref("");
