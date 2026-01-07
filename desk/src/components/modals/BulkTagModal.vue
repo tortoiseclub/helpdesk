@@ -21,20 +21,22 @@
             Select Tags
           </label>
           <Autocomplete
-            v-model="selectedTag"
-            :options="tagSuggestions"
-            placeholder="Type to search tags..."
-            @update:modelValue="addTagToList"
+            :options="tagOptionsWithCreate"
+            placeholder="Search or create tags..."
+            @update:modelValue="handleTagSelection"
+            @update:query="handleQueryUpdate"
           >
-            <template #target="{ togglePopover }">
-              <FormControl
-                v-model="tagInput"
-                type="text"
-                placeholder="Type to search or create tags..."
-                @input="searchTags"
-                @focus="togglePopover"
-                @keydown.enter.prevent="addTagFromInput"
-              />
+            <template #prefix>
+              <LucideSearch class="size-4 text-ink-gray-4" />
+            </template>
+            <template #item="{ item }">
+              <div class="flex items-center gap-2">
+                <LucidePlus v-if="item.isCreate" class="size-3.5 text-ink-gray-5" />
+                <LucideTag v-else class="size-3.5 text-ink-gray-5" />
+                <span :class="item.isCreate ? 'text-ink-gray-7' : ''">
+                  {{ item.isCreate ? `Create "${item.value}"` : item.label }}
+                </span>
+              </div>
             </template>
           </Autocomplete>
         </div>
@@ -88,9 +90,12 @@
 </template>
 
 <script setup lang="ts">
-import { Autocomplete, Badge, Button, Dialog, FormControl, toast } from "frappe-ui";
+import { Autocomplete, Badge, Button, Dialog, toast } from "frappe-ui";
 import { computed, ref, watch } from "vue";
 import LucideX from "~icons/lucide/x";
+import LucidePlus from "~icons/lucide/plus";
+import LucideSearch from "~icons/lucide/search";
+import LucideTag from "~icons/lucide/tag";
 import { createResource } from "frappe-ui";
 
 const props = defineProps<{
@@ -110,8 +115,7 @@ const show = computed({
 
 const selectedCount = computed(() => props.ticketIds.length);
 const tagsToAdd = ref<string[]>([]);
-const tagInput = ref("");
-const selectedTag = ref("");
+const searchQuery = ref("");
 const loading = ref(false);
 const error = ref("");
 
@@ -125,10 +129,34 @@ const tagSuggestionsResource = createResource({
     })),
 });
 
+// Filtered suggestions (excluding already selected tags)
 const tagSuggestions = computed(() => {
   const suggestions = tagSuggestionsResource.data || [];
-  // Filter out already selected tags
   return suggestions.filter((s) => !tagsToAdd.value.includes(s.value));
+});
+
+// Options with "Create" option when search doesn't match
+const tagOptionsWithCreate = computed(() => {
+  const query = searchQuery.value.trim();
+  const suggestions = tagSuggestions.value;
+  
+  // If no query, just return suggestions
+  if (!query) return suggestions;
+  
+  // Check if query exactly matches an existing tag (case-insensitive)
+  const queryLower = query.toLowerCase();
+  const exactMatch = suggestions.some((s) => s.value.toLowerCase() === queryLower);
+  const alreadySelected = tagsToAdd.value.some((t) => t.toLowerCase() === queryLower);
+  
+  // If no exact match and not already selected, add "Create" option
+  if (!exactMatch && !alreadySelected) {
+    return [
+      ...suggestions,
+      { label: query, value: query, isCreate: true },
+    ];
+  }
+  
+  return suggestions;
 });
 
 function fetchTags(searchText = "") {
@@ -136,6 +164,22 @@ function fetchTags(searchText = "") {
     doctype: "HD Ticket",
     txt: searchText,
   });
+}
+
+// Handle search query updates from Autocomplete
+function handleQueryUpdate(query: string) {
+  searchQuery.value = query;
+  fetchTags(query);
+}
+
+// Handle tag selection from Autocomplete
+function handleTagSelection(option: { label: string; value: string; isCreate?: boolean } | null) {
+  if (!option) return;
+  
+  const tagValue = option.value;
+  if (tagValue && !tagsToAdd.value.includes(tagValue)) {
+    tagsToAdd.value.push(tagValue);
+  }
 }
 
 // Resource to add tags in bulk
@@ -155,28 +199,6 @@ const bulkAddResource = createResource({
     toast.error(error.value);
   },
 });
-
-function searchTags() {
-  fetchTags(tagInput.value.trim());
-}
-
-function addTagToList(value: string | { label: string; value: string }) {
-  // Extract the actual tag string from selection
-  const tagValue = typeof value === "string" ? value : value?.value;
-  if (tagValue && !tagsToAdd.value.includes(tagValue)) {
-    tagsToAdd.value.push(tagValue);
-    tagInput.value = "";
-    selectedTag.value = "";
-  }
-}
-
-function addTagFromInput() {
-  const tag = tagInput.value.trim();
-  if (tag && !tagsToAdd.value.includes(tag)) {
-    tagsToAdd.value.push(tag);
-    tagInput.value = "";
-  }
-}
 
 function removeTagFromList(tag: string) {
   tagsToAdd.value = tagsToAdd.value.filter((t) => t !== tag);
@@ -201,8 +223,7 @@ function addTags() {
 function cancel() {
   show.value = false;
   tagsToAdd.value = [];
-  tagInput.value = "";
-  selectedTag.value = "";
+  searchQuery.value = "";
   error.value = "";
 }
 
@@ -213,8 +234,7 @@ watch(show, (value) => {
     fetchTags();
   } else {
     tagsToAdd.value = [];
-    tagInput.value = "";
-    selectedTag.value = "";
+    searchQuery.value = "";
     error.value = "";
   }
 });

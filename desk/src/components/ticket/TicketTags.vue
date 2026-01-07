@@ -72,60 +72,41 @@
       No tags
     </div>
 
-    <!-- Add new tag input -->
-    <div v-if="canEdit && showInput" class="relative mt-1.5">
+    <!-- Add new tag dropdown -->
     <Autocomplete
-      v-model="newTagInput"
-      :options="tagSuggestions"
-        placeholder="Type to add or create tag..."
-        @update:modelValue="handleTagSelect"
+      v-if="canEdit && showInput"
+      class="mt-2"
+      :options="tagOptionsWithCreate"
+      placeholder="Search or create tag..."
+      :autofocus="true"
+      @update:modelValue="handleTagSelection"
+      @update:query="handleQueryUpdate"
     >
-      <template #target="{ togglePopover }">
-        <FormControl
-          ref="tagInputRef"
-          v-model="newTagInput"
-          type="text"
-            placeholder="Type to add or create tag..."
-          @keydown.enter.prevent="addNewTag"
-          @keydown.escape="cancelInput"
-            @input="handleInput"
-          @focus="togglePopover"
-        />
+      <template #prefix>
+        <LucideSearch class="size-4 text-ink-gray-4" />
       </template>
-        <template #footer v-if="inputText && !tagExists">
-          <div class="border-t border-outline-gray-2">
-            <button
-              class="w-full px-3 py-2 text-left text-sm text-ink-gray-7 hover:bg-surface-gray-2 flex items-center gap-2"
-              @click="addNewTag"
-            >
-              <LucidePlus class="size-3" />
-              Create "{{ inputText }}"
-            </button>
-          </div>
-        </template>
-        <template #empty v-if="!tagSuggestionsResource.loading">
-          <div class="px-3 py-2 text-sm text-ink-gray-5">
-            {{ inputText ? 'No matching tags found' : 'Start typing to search tags' }}
-          </div>
-        </template>
+      <template #item="{ item }">
+        <div class="flex items-center gap-2">
+          <LucidePlus v-if="item.isCreate" class="size-3.5 text-ink-gray-5" />
+          <LucideTag v-else class="size-3.5 text-ink-gray-5" />
+          <span :class="item.isCreate ? 'text-ink-gray-7' : ''">
+            {{ item.isCreate ? `Create "${item.value}"` : item.label }}
+          </span>
+        </div>
+      </template>
     </Autocomplete>
-      <div
-        v-if="addTagResource.loading"
-        class="absolute right-2 top-1/2 -translate-y-1/2"
-      >
-        <LucideLoader2 class="size-4 animate-spin text-ink-gray-5" />
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Autocomplete, Badge, Button, FormControl, toast } from "frappe-ui";
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { Autocomplete, Badge, Button, toast } from "frappe-ui";
+import { computed, onMounted, ref } from "vue";
 import LucidePlus from "~icons/lucide/plus";
 import LucideX from "~icons/lucide/x";
 import LucideLoader2 from "~icons/lucide/loader-2";
 import LucideSparkles from "~icons/lucide/sparkles";
+import LucideSearch from "~icons/lucide/search";
+import LucideTag from "~icons/lucide/tag";
 import { createResource } from "frappe-ui";
 
 const props = defineProps<{
@@ -141,8 +122,7 @@ const emit = defineEmits<{
 const tags = computed(() => props.modelValue || []);
 
 const showInput = ref(false);
-const newTagInput = ref<string | { label: string; value: string }>("");
-const tagInputRef = ref<InstanceType<typeof FormControl> | null>(null);
+const searchQuery = ref("");
 const tagBeingRemoved = ref("");
 const isAutoTagging = ref(false);
 
@@ -198,27 +178,6 @@ function autoTagWithAI() {
   });
 }
 
-// Helper to get string value from input (handles both string and object)
-function getInputValue(): string {
-  const val = newTagInput.value;
-  if (typeof val === "string") {
-    return val.trim();
-  }
-  if (val && typeof val === "object" && "value" in val) {
-    return String(val.value).trim();
-  }
-  return "";
-}
-
-// Computed for template use
-const inputText = computed(() => getInputValue());
-
-// Check if the current input already exists as a tag
-const tagExists = computed(() => {
-  const input = getInputValue().toLowerCase();
-  return tags.value.some((t) => t.toLowerCase() === input);
-});
-
 // Resource to get tag suggestions
 const tagSuggestionsResource = createResource({
   url: "frappe.desk.doctype.tag.tag.get_tags",
@@ -229,10 +188,34 @@ const tagSuggestionsResource = createResource({
     })),
 });
 
+// Filtered tag suggestions (excluding already added tags)
 const tagSuggestions = computed(() => {
   const suggestions = tagSuggestionsResource.data || [];
-  // Filter out already added tags
   return suggestions.filter((s) => !tags.value.includes(s.value));
+});
+
+// Options with "Create" option when search doesn't match
+const tagOptionsWithCreate = computed(() => {
+  const query = searchQuery.value.trim();
+  const suggestions = tagSuggestions.value;
+  
+  // If no query, just return suggestions
+  if (!query) return suggestions;
+  
+  // Check if query exactly matches an existing tag (case-insensitive)
+  const queryLower = query.toLowerCase();
+  const exactMatch = suggestions.some((s) => s.value.toLowerCase() === queryLower);
+  const alreadyOnTicket = tags.value.some((t) => t.toLowerCase() === queryLower);
+  
+  // If no exact match and not already on ticket, add "Create" option
+  if (!exactMatch && !alreadyOnTicket) {
+    return [
+      ...suggestions,
+      { label: query, value: query, isCreate: true },
+    ];
+  }
+  
+  return suggestions;
 });
 
 function fetchTags(searchText = "") {
@@ -240,6 +223,38 @@ function fetchTags(searchText = "") {
     doctype: "HD Ticket",
     txt: searchText,
   });
+}
+
+// Handle search query updates from Autocomplete
+function handleQueryUpdate(query: string) {
+  searchQuery.value = query;
+  fetchTags(query);
+}
+
+// Handle tag selection from Autocomplete
+function handleTagSelection(option: { label: string; value: string; isCreate?: boolean } | null) {
+  if (!option) return;
+  
+  const tagValue = option.value;
+  if (!tagValue || !props.ticketId) return;
+  
+  // Check if already on ticket
+  if (tags.value.some((t) => t.toLowerCase() === tagValue.toLowerCase())) {
+    toast.warning("Tag already added to this ticket");
+    return;
+  }
+  
+  // Add the tag (works for both existing and new tags)
+  tagBeingAdded.value = tagValue;
+  addTagResource.submit({
+    tag: tagValue,
+    dt: "HD Ticket",
+    dn: props.ticketId,
+  });
+  
+  // Close the dropdown
+  showInput.value = false;
+  searchQuery.value = "";
 }
 
 // Store tag being added for use in callbacks
@@ -253,10 +268,7 @@ const addTagResource = createResource({
     const newTags = [...tags.value, addedTag];
     emit("update:modelValue", newTags);
     toast.success(`Tag "${addedTag}" added`);
-    newTagInput.value = "";
     tagBeingAdded.value = "";
-    // Refresh suggestions to include the new tag
-    fetchTags();
   },
   onError: (error) => {
     tagBeingAdded.value = "";
@@ -280,49 +292,6 @@ const removeTagResource = createResource({
   },
 });
 
-function handleInput() {
-  fetchTags(getInputValue());
-}
-
-function handleTagSelect(value: string | { label: string; value: string }) {
-  // Extract the actual tag string from selection
-  const tagValue = typeof value === "string" ? value : value?.value;
-  if (tagValue) {
-    newTagInput.value = tagValue;
-    addNewTag();
-  }
-}
-
-function addNewTag() {
-  const tagValue = getInputValue();
-  
-  if (!tagValue) {
-    return;
-  }
-
-  if (!props.ticketId) {
-    toast.error("Cannot add tag: ticket ID is missing");
-    return;
-  }
-
-  // Check if tag already exists on this ticket
-  if (tags.value.some((t) => t.toLowerCase() === tagValue.toLowerCase())) {
-    toast.warning("Tag already added to this ticket");
-    newTagInput.value = "";
-    return;
-  }
-
-  // Store for use in callback
-  tagBeingAdded.value = tagValue;
-
-  // Add the tag
-  addTagResource.submit({
-    tag: tagValue,
-    dt: "HD Ticket",
-    dn: props.ticketId,
-  });
-}
-
 function removeTag(tag: string) {
   if (!props.ticketId) {
     toast.error("Cannot remove tag: ticket ID is missing");
@@ -344,22 +313,14 @@ function removeTag(tag: string) {
 
 function openInput() {
   showInput.value = true;
+  searchQuery.value = "";
   fetchTags();
 }
 
 function cancelInput() {
-  newTagInput.value = "";
   showInput.value = false;
+  searchQuery.value = "";
 }
-
-// Focus input when shown
-watch(showInput, async (value) => {
-  if (value) {
-    await nextTick();
-    const input = tagInputRef.value?.$el?.querySelector("input");
-    input?.focus();
-  }
-});
 
 onMounted(() => {
   aiTagAnnotationEnabledResource.reload();
