@@ -191,6 +191,75 @@ class HDTicket(Document):
         ):
             self.send_acknowledgement_email()
 
+        # Auto-assign team based on conditions (runs after communication is created)
+        self.auto_assign_team_by_conditions()
+
+    def auto_assign_team_by_conditions(self):
+        """
+        Automatically assigns ticket to a team based on conditions defined in
+        each team's Assignment Rule (assign_condition field).
+
+        Evaluates teams in order of their Assignment Rule priority.
+        First matching team wins. Agent assignment is handled separately
+        by Frappe's Assignment Rule mechanism.
+        """
+        # Skip if agent_group is already set
+        if self.agent_group:
+            return
+
+        # Get all teams with their assignment rules
+        teams_with_rules = frappe.get_all(
+            "HD Team",
+            filters={"assignment_rule": ["is", "set"]},
+            fields=["name", "assignment_rule"],
+        )
+
+        if not teams_with_rules:
+            return
+
+        # Get assignment rule details with priority for ordering
+        team_rules = []
+        for team in teams_with_rules:
+            rule_data = frappe.db.get_value(
+                "Assignment Rule",
+                team.assignment_rule,
+                ["assign_condition", "priority", "disabled"],
+                as_dict=True,
+            )
+            if rule_data and not rule_data.get("disabled"):
+                team_rules.append({
+                    "team": team.name,
+                    "assign_condition": rule_data.get("assign_condition"),
+                    "priority": rule_data.get("priority") or 0,
+                })
+
+        # Sort by priority (lower number = higher priority)
+        team_rules.sort(key=lambda x: x["priority"])
+
+        # Prepare document dict for safe_eval
+        doc = self.as_dict()
+
+        for rule in team_rules:
+            team_name = rule["team"]
+            assign_condition = rule["assign_condition"]
+
+            if not assign_condition:
+                continue
+
+            try:
+                # Use frappe.safe_eval to evaluate the condition
+                if frappe.safe_eval(assign_condition, None, doc):
+                    self.agent_group = team_name
+                    self.db_set("agent_group", team_name, update_modified=False)
+                    log_ticket_activity(
+                        self.name,
+                        f"auto-assigned to team '{team_name}' based on assignment rules",
+                    )
+                    return  # First match wins
+            except Exception:
+                # Condition didn't match or had an error - continue to next rule
+                pass
+
     def on_update(self):
         # flake8: noqa
         if self.status_category == "Open":
