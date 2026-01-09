@@ -44,6 +44,42 @@ from ..hd_notification.utils import clear as clear_notifications
 from ..hd_service_level_agreement.utils import get_sla
 
 
+def get_always_cc():
+    """
+    Get the always CC email addresses from HD Settings.
+    Returns a list of email addresses.
+    """
+    always_cc = frappe.db.get_single_value("HD Settings", "always_cc") or ""
+    if not always_cc:
+        return []
+    # Split by comma and strip whitespace, filter empty strings
+    return [email.strip() for email in always_cc.split(",") if email.strip()]
+
+
+def merge_cc(user_cc: str | list | None, always_cc: list) -> str:
+    """
+    Merge user-provided CC with always CC emails.
+    Returns comma-separated string of unique email addresses.
+    """
+    if not user_cc:
+        user_cc_list = []
+    elif isinstance(user_cc, str):
+        user_cc_list = [email.strip() for email in user_cc.split(",") if email.strip()]
+    else:
+        user_cc_list = list(user_cc)
+
+    # Combine and deduplicate while preserving order
+    all_cc = []
+    seen = set()
+    for email in user_cc_list + always_cc:
+        email_lower = email.lower()
+        if email_lower not in seen:
+            seen.add(email_lower)
+            all_cc.append(email)
+
+    return ",".join(all_cc) if all_cc else None
+
+
 class HDTicket(Document):
     @property
     def default_open_status(self):
@@ -141,6 +177,7 @@ class HDTicket(Document):
             "HD Settings", "feedback_email_content"
         )
         default_feedback_email_content = get_default_email_content("share_feedback")
+        always_cc = get_always_cc()
         try:
             frappe.sendmail(
                 recipients=[self.raised_by],
@@ -155,6 +192,7 @@ class HDTicket(Document):
                 now=True,
                 in_reply_to=last_communication.name if last_communication else None,
                 email_headers={"X-Auto-Generated": "hd-email-feedback"},
+                cc=always_cc if always_cc else None,
             )
             frappe.msgprint(_("Feedback email has been sent to the customer"))
         except Exception as e:
@@ -623,6 +661,10 @@ class HDTicket(Document):
         recipients = to or self.raised_by
         sender_email = None if skip_email_workflow else self.sender_email()
 
+        # Merge user-provided CC with always CC from settings
+        always_cc = get_always_cc()
+        merged_cc = merge_cc(cc, always_cc)
+
         if recipients == "Administrator":
             admin_email = frappe.get_value("User", "Administrator", "email")
             recipients = admin_email
@@ -630,7 +672,7 @@ class HDTicket(Document):
         communication = frappe.get_doc(
             {
                 "bcc": bcc,
-                "cc": cc,
+                "cc": merged_cc,
                 "communication_medium": medium,
                 "communication_type": "Communication",
                 "content": message,
@@ -705,7 +747,7 @@ class HDTicket(Document):
             frappe.sendmail(
                 attachments=_attachments,
                 bcc=bcc,
-                cc=cc,
+                cc=merged_cc,
                 communication=communication.name,
                 delayed=send_delayed,
                 expose_recipients="header",
@@ -806,6 +848,7 @@ class HDTicket(Document):
             "HD Settings", "reply_email_to_agent_content"
         )
         default_email_content = get_default_email_content("reply_to_agents")
+        always_cc = get_always_cc()
         try:
             frappe.sendmail(
                 recipients=recipients,
@@ -822,6 +865,7 @@ class HDTicket(Document):
                 reference_doctype="HD Ticket",
                 reference_name=self.name,
                 now=True,
+                cc=always_cc if always_cc else None,
             )
         except Exception as e:
             frappe.throw(_(e))
@@ -833,6 +877,7 @@ class HDTicket(Document):
         default_acknowledgement_email_content = get_default_email_content(
             "acknowledgement"
         )
+        always_cc = get_always_cc()
 
         try:
             frappe.sendmail(
@@ -847,6 +892,7 @@ class HDTicket(Document):
                 now=True,
                 expose_recipients="header",
                 email_headers={"X-Auto-Generated": "hd-acknowledgement"},
+                cc=always_cc if always_cc else None,
             )
         except Exception as e:
             frappe.throw(

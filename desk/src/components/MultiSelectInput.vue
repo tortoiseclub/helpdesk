@@ -9,13 +9,21 @@
         theme="gray"
         variant="subtle"
         class="rounded-full"
+        :class="{ 'opacity-70': isLocked(value) }"
+        :title="isLocked(value) ? 'This recipient cannot be removed' : ''"
         @keydown.delete.capture.stop="removeLastValue"
       >
         <template #suffix>
           <FeatherIcon
-            class="h-3.5"
+            v-if="!isLocked(value)"
+            class="h-3.5 cursor-pointer"
             name="x"
             @click.stop="removeValue(value)"
+          />
+          <FeatherIcon
+            v-else
+            class="h-3.5 text-gray-400 cursor-not-allowed"
+            name="lock"
           />
         </template>
       </Button>
@@ -105,6 +113,10 @@ const props = defineProps({
   errorMessage: {
     type: Function,
     default: (value) => `${value} is an Invalid value`,
+  },
+  lockedValues: {
+    type: Array,
+    default: () => [],
   },
 });
 
@@ -202,7 +214,14 @@ const addValue = (value) => {
   }
 };
 
+const isLocked = (value) => {
+  return props.lockedValues.some(
+    (locked) => locked.toLowerCase() === value.toLowerCase()
+  );
+};
+
 const removeValue = (value) => {
+  if (isLocked(value)) return;
   values.value = values.value.filter((v) => v !== value);
 };
 
@@ -211,6 +230,11 @@ const removeLastValue = () => {
 
   let emailRef = emails.value[emails.value.length - 1]?.$el;
   if (document.activeElement === emailRef) {
+    // Don't remove if the last value is locked
+    const lastValue = values.value[values.value.length - 1];
+    if (lastValue && isLocked(lastValue)) {
+      return;
+    }
     values.value.pop();
     nextTick(() => {
       if (values.value.length) {
