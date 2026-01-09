@@ -3,6 +3,7 @@
     :id="`communication-${name}`"
     v-bind="$attrs"
     class="grow cursor-pointer border-transparent bg-white rounded-md shadow text-base leading-6 transition-all duration-300 ease-in-out"
+    @click="!isExpanded && toggleExpand()"
   >
     <div
       class="flex items-center justify-between gap-2"
@@ -46,56 +47,79 @@
             {{ timeAgo(creation) }}
           </p>
         </Tooltip>
-        <Button variant="ghost" class="text-gray-700" @click="reply">
-          <ReplyIcon class="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" class="text-gray-700" @click="replyAll">
-          <ReplyAllIcon class="h-4 w-4" />
-        </Button>
-        <Dropdown
-          v-if="showSplitOption"
-          :placement="'right'"
-          :options="[
-            {
-              label: 'Split Ticket',
-              icon: LucideSplit,
-              onClick: () => (showSplitModal = true),
-            },
-          ]"
+        <!-- Show action buttons only when expanded -->
+        <template v-if="isExpanded">
+          <Button variant="ghost" class="text-gray-700" @click.stop="reply">
+            <ReplyIcon class="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" class="text-gray-700" @click.stop="replyAll">
+            <ReplyAllIcon class="h-4 w-4" />
+          </Button>
+          <Dropdown
+            v-if="showSplitOption"
+            :placement="'right'"
+            :options="[
+              {
+                label: 'Split Ticket',
+                icon: LucideSplit,
+                onClick: () => (showSplitModal = true),
+              },
+            ]"
+          >
+            <Button
+              icon="more-horizontal"
+              class="text-gray-600"
+              variant="ghost"
+              @click.stop
+            />
+          </Dropdown>
+        </template>
+        <!-- Show expand/collapse chevron -->
+        <Button
+          variant="ghost"
+          class="text-gray-600"
+          @click.stop="toggleExpand"
         >
-          <Button
-            icon="more-horizontal"
-            class="text-gray-600"
-            variant="ghost"
+          <FeatherIcon
+            :name="isExpanded ? 'chevron-up' : 'chevron-down'"
+            class="h-4 w-4"
           />
-        </Dropdown>
+        </Button>
       </div>
     </div>
-    <!-- <div class="text-sm leading-5 text-gray-600">
-      {{ subject }}
-    </div> -->
-    <div class="text-sm leading-5 text-gray-600">
-      <span v-if="to" class="text-2xs mr-1 font-bold text-gray-500">TO:</span>
-      <span v-if="to"> {{ to }} </span>
-      <span v-if="cc">, </span>
-      <span v-if="cc" class="text-2xs mr-1 font-bold text-gray-500"> CC: </span>
-      <span v-if="cc">{{ cc }}</span>
-      <span v-if="bcc">, </span>
-      <span v-if="bcc" class="text-2xs mr-1 font-bold text-gray-500">
-        BCC:
-      </span>
-      <span v-if="bcc">{{ bcc }}</span>
+
+    <!-- Collapsed preview: show truncated text preview -->
+    <div v-if="!isExpanded" class="mt-2">
+      <p class="text-sm text-gray-500 line-clamp-2">
+        {{ contentPreview }}
+      </p>
     </div>
-    <div class="border-0 border-t my-3 border-outline-gray-modals" />
-    <EmailContent :content="content" />
-    <div class="flex flex-wrap gap-2">
-      <AttachmentItem
-        v-for="a in attachments"
-        :key="a.file_url"
-        :label="a.file_name"
-        :url="a.file_url"
-      />
-    </div>
+
+    <!-- Expanded content -->
+    <template v-if="isExpanded">
+      <div class="text-sm leading-5 text-gray-600">
+        <span v-if="to" class="text-2xs mr-1 font-bold text-gray-500">TO:</span>
+        <span v-if="to"> {{ to }} </span>
+        <span v-if="cc">, </span>
+        <span v-if="cc" class="text-2xs mr-1 font-bold text-gray-500"> CC: </span>
+        <span v-if="cc">{{ cc }}</span>
+        <span v-if="bcc">, </span>
+        <span v-if="bcc" class="text-2xs mr-1 font-bold text-gray-500">
+          BCC:
+        </span>
+        <span v-if="bcc">{{ bcc }}</span>
+      </div>
+      <div class="border-0 border-t my-3 border-outline-gray-modals" />
+      <EmailContent :content="content" />
+      <div class="flex flex-wrap gap-2">
+        <AttachmentItem
+          v-for="a in attachments"
+          :key="a.file_url"
+          :label="a.file_name"
+          :url="a.file_url"
+        />
+      </div>
+    </template>
   </div>
   <TicketSplitModal
     v-model="showSplitModal"
@@ -108,7 +132,7 @@
 import { AttachmentItem } from "@/components";
 import { useScreenSize } from "@/composables/screen";
 import { dateFormat, dateTooltipFormat, timeAgo } from "@/utils";
-import { Dropdown } from "frappe-ui";
+import { Dropdown, FeatherIcon } from "frappe-ui";
 import { computed, ref } from "vue";
 import LucideSplit from "~icons/lucide/split";
 import { ReplyAllIcon, ReplyIcon } from "./icons";
@@ -124,6 +148,10 @@ const props = defineProps({
   showSplitOption: {
     type: Boolean,
     default: false,
+  },
+  defaultExpanded: {
+    type: Boolean,
+    default: true,
   },
 });
 
@@ -147,6 +175,22 @@ const auth = storeToRefs(useAuthStore());
 const { isMobileView } = useScreenSize();
 
 const showSplitModal = ref(false);
+const isExpanded = ref(props.defaultExpanded);
+
+const toggleExpand = () => {
+  isExpanded.value = !isExpanded.value;
+};
+
+// Generate a plain text preview from HTML content
+const contentPreview = computed(() => {
+  if (!content) return "";
+  // Create a temporary element to strip HTML tags
+  const tempDiv = document.createElement("div");
+  tempDiv.innerHTML = content;
+  const textContent = tempDiv.textContent || tempDiv.innerText || "";
+  // Clean up whitespace and limit length
+  return textContent.replace(/\s+/g, " ").trim().substring(0, 200);
+});
 
 const status = computed(() => {
   let _status = deliveryStatus;

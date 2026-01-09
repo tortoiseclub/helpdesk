@@ -55,6 +55,7 @@
               :show-split-option="
                 !activity.isFirstEmail && ticketStatus !== 'Closed'
               "
+              :default-expanded="isFirstEmail(activity, i)"
               class="py-2 px-3"
               @reply="(e) => emit('email:reply', e)"
             />
@@ -173,20 +174,21 @@ const emptyTextIcon = computed(() => {
   return h(icon, { class: "text-gray-500" });
 });
 
+// Find the index of first email in activities list and check if current activity is that email
+const firstEmailIndex = computed(() => {
+  return props.activities.findIndex((a) => a.type === "email");
+});
+
+const isFirstEmail = (activity: TicketActivity, index: number) => {
+  return activity.type === "email" && index === firstEmailIndex.value;
+};
+
 function scrollToLatestActivity() {
+  // Only scroll if there's a hash in the URL (direct link to specific activity)
   if (route.hash) {
     scrollToHash();
-    return;
   }
-  setTimeout(() => {
-    let el;
-    let e = document.getElementsByClassName("activity");
-    el = e[e.length - 1];
-    if (el && !isElementInViewport(el)) {
-      el.scrollIntoViewIfNeeded();
-      el.focus();
-    }
-  }, 500);
+  // Otherwise, stay at top where the latest email is shown expanded
 }
 function scrollToHash() {
   const hash = route.hash;
