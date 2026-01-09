@@ -87,7 +87,9 @@
   "reply_email_to_agent_content",
   "reply_from_agent_section",
   "enable_reply_email_via_agent",
-  "reply_via_agent_email_content"
+  "reply_via_agent_email_content",
+  "always_cc_section",
+  "always_cc"
  ],
  "fields": [
   {
@@ -403,6 +405,17 @@
    "fieldname": "reply_via_agent_email_content",
    "fieldtype": "Text",
    "label": "Email Content"
+  },
+  {
+   "fieldname": "always_cc_section",
+   "fieldtype": "Section Break",
+   "label": "Always CC"
+  },
+  {
+   "description": "Comma-separated list of email addresses that will always be added to CC for all ticket-related emails. These recipients cannot be removed by agents.",
+   "fieldname": "always_cc",
+   "fieldtype": "Small Text",
+   "label": "Always CC Email(s)"
   },
   {
    "fieldname": "reply_from_contact_section",

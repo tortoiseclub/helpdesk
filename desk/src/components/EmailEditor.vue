@@ -36,9 +36,9 @@
         />
       </div>
       <div
-        v-if="showCC || cc"
+        v-if="showCC || cc || alwaysCcEmails.length"
         class="mx-10 flex items-center gap-2 py-2.5"
-        :class="cc || showCC ? 'border-b' : ''"
+        :class="cc || showCC || alwaysCcEmails.length ? 'border-b' : ''"
       >
         <span class="text-xs text-gray-500">CC:</span>
         <MultiSelectInput
@@ -46,7 +46,8 @@
           v-model="ccEmailsClone"
           class="flex-1"
           :validate="validateEmail"
-          :error-message="(value) => `${value} is an invalid email address`"
+          :error-message="(value: string) => `${value} is an invalid email address`"
+          :locked-values="alwaysCcEmails"
         />
       </div>
       <div
@@ -270,6 +271,44 @@ function applyCannedResponse(template) {
   showCannedResponseSelectorModal.value = false;
 }
 
+// Fetch always CC emails from HD Settings
+const alwaysCcResource = createResource({
+  url: "frappe.client.get_single_value",
+  params: {
+    doctype: "HD Settings",
+    field: "always_cc",
+  },
+  auto: true,
+});
+
+const alwaysCcEmails = computed(() => {
+  const value = alwaysCcResource.data || "";
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((email: string) => email.trim())
+    .filter((email: string) => email);
+});
+
+// Initialize CC with always CC emails when they load
+watch(
+  alwaysCcEmails,
+  (emails) => {
+    if (emails.length > 0) {
+      // Add always CC emails if not already present
+      const currentCc = new Set(ccEmailsClone.value.map((e) => e.toLowerCase()));
+      emails.forEach((email: string) => {
+        if (!currentCc.has(email.toLowerCase())) {
+          ccEmailsClone.value.push(email);
+        }
+      });
+      // Auto-show CC section when there are always CC emails
+      showCC.value = true;
+    }
+  },
+  { immediate: true }
+);
+
 const sendMail = createResource({
   url: "run_doc_method",
   makeParams: () => ({
@@ -338,8 +377,24 @@ function addToReply(
   bccEmails: string[]
 ) {
   toEmailsClone.value = toEmails;
-  ccEmailsClone.value = ccEmails;
+  // Merge always CC emails with provided CC emails
+  const allCc = new Set([
+    ...alwaysCcEmails.value.map((e: string) => e.toLowerCase()),
+    ...ccEmails.map((e) => e.toLowerCase()),
+  ]);
+  // Rebuild with original case, prioritizing always CC
+  const mergedCc: string[] = [...alwaysCcEmails.value];
+  ccEmails.forEach((email) => {
+    if (!alwaysCcEmails.value.some((e: string) => e.toLowerCase() === email.toLowerCase())) {
+      mergedCc.push(email);
+    }
+  });
+  ccEmailsClone.value = mergedCc;
   bccEmailsClone.value = bccEmails;
+  // Show CC if there are any CC emails
+  if (mergedCc.length > 0) {
+    showCC.value = true;
+  }
   editorRef.value.editor
     .chain()
     .clearContent()
@@ -360,10 +415,11 @@ function handleDiscard() {
   attachments.value = [];
   newEmail.value = null;
 
-  ccEmailsClone.value = [];
+  // Keep always CC emails, remove others
+  ccEmailsClone.value = [...alwaysCcEmails.value];
   bccEmailsClone.value = [];
-  ccEmailsClone.value = [];
-  showCC.value = false;
+  // Show CC section if there are always CC emails
+  showCC.value = alwaysCcEmails.value.length > 0;
   showBCC.value = false;
 
   emit("discard");
