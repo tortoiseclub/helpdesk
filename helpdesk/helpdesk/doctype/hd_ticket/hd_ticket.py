@@ -1017,6 +1017,14 @@ class HDTicket(Document):
         # Fetch description from communication if not set already. This might not be needed
         # anymore as a communication is created when a ticket is created.
         self.description = self.description or c.content
+        
+        # Update participant emails from communication
+        self._update_participant_emails(c)
+        
+        # Check for agent_group assignment if not present
+        if not self.agent_group:
+            self.auto_assign_team_by_conditions()
+        
         # Save the ticket, allowing for hooks to run.
         self.save()
         
@@ -1049,6 +1057,80 @@ class HDTicket(Document):
                 message=f"Failed to enqueue AI processing for ticket {self.name}: {str(e)}",
                 title="AI Processing Enqueue Failed"
             )
+
+    def _update_participant_emails(self, communication):
+        """
+        Extract email addresses from communication and merge with existing participant_emails.
+        Accumulates unique email addresses from sender, recipients, cc, and bcc fields.
+        """
+        new_emails = set()
+        
+        # Extract emails from communication fields
+        email_fields = ["sender", "recipients", "cc", "bcc"]
+        for field in email_fields:
+            field_value = getattr(communication, field, None)
+            if field_value:
+                # Parse email addresses - handle comma-separated values
+                extracted = self._extract_emails_from_string(field_value)
+                new_emails.update(extracted)
+        
+        # Get existing participant emails
+        existing_emails = set()
+        if self.participant_emails:
+            existing_emails = {
+                email.strip().lower()
+                for email in self.participant_emails.split(",")
+                if email.strip()
+            }
+        
+        # Merge and deduplicate (case-insensitive)
+        all_emails_lower = existing_emails.union({e.lower() for e in new_emails})
+        
+        # Build final list preserving original case for new emails
+        final_emails = []
+        seen_lower = set()
+        
+        # First add existing emails (preserve their original form)
+        if self.participant_emails:
+            for email in self.participant_emails.split(","):
+                email = email.strip()
+                if email and email.lower() not in seen_lower:
+                    final_emails.append(email)
+                    seen_lower.add(email.lower())
+        
+        # Then add new emails
+        for email in new_emails:
+            if email.lower() not in seen_lower:
+                final_emails.append(email)
+                seen_lower.add(email.lower())
+        
+        self.participant_emails = ",".join(final_emails) if final_emails else None
+
+    def _extract_emails_from_string(self, email_string: str) -> set:
+        """
+        Extract email addresses from a string that may contain:
+        - Simple emails: user@example.com
+        - Named emails: "John Doe" <john@example.com>
+        - Comma-separated list of the above
+        """
+        if not email_string:
+            return set()
+        
+        emails = set()
+        # Split by comma to handle multiple addresses
+        parts = email_string.split(",")
+        
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+            
+            # Use parseaddr to extract email from formats like "Name <email>"
+            _, email = parseaddr(part)
+            if email:
+                emails.add(email)
+        
+        return emails
 
     @frappe.whitelist()
     def regenerate_summary(self):

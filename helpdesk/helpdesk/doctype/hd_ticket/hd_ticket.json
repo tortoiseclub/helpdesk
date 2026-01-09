@@ -17,6 +17,7 @@
   "cb00",
   "ticket_type",
   "agent_group",
+  "participant_emails",
   "summary",
   "sb_details",
   "description",
@@ -128,6 +129,12 @@
    "fieldtype": "Link",
    "label": "Team",
    "options": "HD Team"
+  },
+  {
+   "fieldname": "participant_emails",
+   "fieldtype": "Small Text",
+   "label": "Participant Emails",
+   "read_only": 1
   },
   {
    "fieldname": "ticket_split_from",
