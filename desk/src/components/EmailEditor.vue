@@ -23,6 +23,8 @@
           class="flex-1"
           :validate="validateEmail"
           :error-message="(value) => `${value} is an invalid email address`"
+          field-id="to"
+          @email-dropped="handleEmailDrop"
         />
         <Button
           :label="'CC'"
@@ -48,6 +50,8 @@
           :validate="validateEmail"
           :error-message="(value: string) => `${value} is an invalid email address`"
           :locked-values="alwaysCcEmails"
+          field-id="cc"
+          @email-dropped="handleEmailDrop"
         />
       </div>
       <div
@@ -62,6 +66,8 @@
           class="flex-1"
           :validate="validateEmail"
           :error-message="(value) => `${value} is an invalid email address`"
+          field-id="bcc"
+          @email-dropped="handleEmailDrop"
         />
       </div>
     </template>
@@ -363,6 +369,29 @@ function toggleBCC() {
     nextTick(() => {
       bccInput.value.setFocus();
     });
+}
+
+// Handle email drag and drop between TO, CC, BCC fields
+function handleEmailDrop({ email, sourceField, targetField }: { email: string; sourceField: string; targetField: string }) {
+  // Remove from source field (unless it's a locked value)
+  const isLockedInCc = alwaysCcEmails.value.some(
+    (e: string) => e.toLowerCase() === email.toLowerCase()
+  );
+  
+  if (sourceField === "to") {
+    toEmailsClone.value = toEmailsClone.value.filter((e) => e !== email);
+  } else if (sourceField === "cc" && !isLockedInCc) {
+    ccEmailsClone.value = ccEmailsClone.value.filter((e) => e !== email);
+  } else if (sourceField === "bcc") {
+    bccEmailsClone.value = bccEmailsClone.value.filter((e) => e !== email);
+  }
+  
+  // Auto-show CC/BCC sections when dropping into them
+  if (targetField === "cc") {
+    showCC.value = true;
+  } else if (targetField === "bcc") {
+    showBCC.value = true;
+  }
 }
 
 async function removeAttachment(attachment) {
