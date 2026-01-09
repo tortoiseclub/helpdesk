@@ -61,9 +61,7 @@ const route = useRoute();
 const ticket = inject(ITicket);
 const communications = computed(() => {
   const _communications = ticket.data.communications || [];
-  return _communications.sort(
-    (a, b) => new Date(a.creation) - new Date(b.creation)
-  );
+  return _communications
 });
 
 function scroll(id: string) {

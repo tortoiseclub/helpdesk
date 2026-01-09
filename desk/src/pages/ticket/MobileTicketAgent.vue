@@ -446,7 +446,7 @@ const activities = computed(() => {
     ...commentProps,
     ...historyProps,
     ...callProps,
-  ].sort((a, b) => new Date(a.creation) - new Date(b.creation));
+  ].sort((a, b) => new Date(b.creation) - new Date(a.creation));
 
   const data = [];
   let i = 0;
