@@ -71,19 +71,25 @@ def get_participant_emails_for_ticket(ticket_name: str) -> str | None:
     return ",".join(final_emails) if final_emails else None
 
 
-def execute():
+def execute(batch_size=100):
     """
     Backfill participant_emails for all HD Tickets.
     Uses direct SQL update to avoid triggering hooks.
+    Processes in batches to avoid high CPU usage.
     """
-    # Get all ticket names
-    tickets = frappe.get_all("HD Ticket", pluck="name")
+    # Get all ticket names that don't have participant_emails set yet
+    tickets = frappe.get_all(
+        "HD Ticket",
+        filters={"participant_emails": ["in", [None, ""]]},
+        pluck="name",
+        order_by="name asc",
+    )
 
     total = len(tickets)
     updated = 0
     skipped = 0
 
-    print(f"Processing {total} tickets...")
+    print(f"Processing {total} tickets in batches of {batch_size}...")
 
     for i, ticket_name in enumerate(tickets):
         participant_emails = get_participant_emails_for_ticket(ticket_name)
@@ -102,11 +108,12 @@ def execute():
         else:
             skipped += 1
 
-        # Progress indicator every 100 tickets
-        if (i + 1) % 100 == 0:
+        # Commit and show progress every batch_size tickets
+        if (i + 1) % batch_size == 0:
+            frappe.db.commit()
             print(f"Processed {i + 1}/{total} tickets...")
 
-    # Commit the transaction
+    # Final commit for remaining records
     frappe.db.commit()
 
     print(f"\nBackfill complete!")
