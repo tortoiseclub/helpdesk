@@ -78,14 +78,14 @@ const { isCallingEnabled } = storeToRefs(telephonyStore);
 const tabs: ComputedRef<TabObject[]> = computed(() => {
   const _tabs: TabObject[] = [
     {
-      name: "activity",
-      label: "Activity",
-      icon: ActivityIcon,
-    },
-    {
       name: "email",
       label: "Emails",
       icon: EmailIcon,
+    },
+    {
+      name: "activity",
+      label: "Activity",
+      icon: ActivityIcon,
     },
     {
       name: "comment",
@@ -178,7 +178,7 @@ const _activities = computed(() => {
     ...commentProps,
     ...historyProps,
     ...callProps,
-  ].sort((a, b) => new Date(a.creation) - new Date(b.creation));
+  ].sort((a, b) => new Date(b.creation) - new Date(a.creation));
   const data = [];
   let i = 0;
 

@@ -63,7 +63,7 @@ const route = useRoute();
 const ticket = inject(ITicket);
 const communications = computed(() => {
   const _communications = ticket.data.communications || [];
-  return orderBy(_communications, (c) => dayjs(c.creation));
+  return _communications
 });
 
 function scroll(id: string) {

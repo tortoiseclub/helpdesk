@@ -181,7 +181,7 @@ def get_communications(ticket: str):
         )
         .where(QBCommunication.reference_doctype == "HD Ticket")
         .where(QBCommunication.reference_name == ticket)
-        .orderby(QBCommunication.creation, order=Order.asc)
+        .orderby(QBCommunication.creation, order=Order.desc)
         .run(as_dict=True)
     )
     for c in communications:
@@ -204,7 +204,7 @@ def get_comments(ticket: str):
             QBComment.name,
         )
         .where(QBComment.reference_ticket == ticket)
-        .orderby(QBComment.creation, order=Order.asc)
+        .orderby(QBComment.creation, order=Order.desc)
         .run(as_dict=True)
     )
     for c in comments:
