@@ -13,11 +13,9 @@
       <div v-if="isMobileView" class="flex items-center gap-2 text-sm">
         <div class="leading-tight">
           <p>{{ sender.full_name || "No name found" }}</p>
-          <Tooltip :text="dateFormat(creation, dateTooltipFormat)">
-            <p class="text-xs md:text-sm text-gray-600">
-              {{ timeAgo(creation) }}
-            </p>
-          </Tooltip>
+          <p class="text-xs md:text-sm text-gray-600">
+            {{ dateFormat(creation, compactDateFormat) }}
+          </p>
           <p class="sm:flex hidden text-sm text-gray-600" v-if="sender.name">
             {{ "<" + sender.name + ">" }}
           </p>
@@ -39,14 +37,9 @@
           :theme="status.color"
           class="mr-1.5"
         />
-        <Tooltip
-          :text="dateFormat(creation, dateTooltipFormat)"
-          v-if="!isMobileView"
-        >
-          <p class="text-xs md:text-sm text-gray-600">
-            {{ timeAgo(creation) }}
-          </p>
-        </Tooltip>
+        <p class="text-xs md:text-sm text-gray-600" v-if="!isMobileView">
+          {{ dateFormat(creation, compactDateFormat) }}
+        </p>
         <!-- Show action buttons only when expanded -->
         <template v-if="isExpanded">
           <Button variant="ghost" class="text-gray-700" @click.stop="reply">
@@ -131,7 +124,7 @@
 <script setup lang="ts">
 import { AttachmentItem } from "@/components";
 import { useScreenSize } from "@/composables/screen";
-import { dateFormat, dateTooltipFormat, timeAgo } from "@/utils";
+import { dateFormat } from "@/utils";
 import { Dropdown, FeatherIcon } from "frappe-ui";
 import { computed, ref } from "vue";
 import LucideSplit from "~icons/lucide/split";
@@ -139,6 +132,8 @@ import { ReplyAllIcon, ReplyIcon } from "./icons";
 import TicketSplitModal from "./ticket/TicketSplitModal.vue";
 import { useAuthStore } from "@/stores/auth";
 import { storeToRefs } from "pinia";
+
+const compactDateFormat = "MMM D 'YY, h:mm A";
 
 const props = defineProps({
   activity: {
