@@ -2,15 +2,30 @@
   <LayoutHeader>
     <template #left-header>
       <div class="flex flex-col truncate">
-        <Breadcrumbs :items="breadcrumbs" class="breadcrumbs">
-          <template #prefix="{ item }">
-            <Icon
-              v-if="item.icon"
-              :icon="item.icon"
-              class="mr-1 h-4 flex items-center justify-center self-center"
-            />
-          </template>
-        </Breadcrumbs>
+        <div class="flex items-center gap-1">
+          <Breadcrumbs :items="breadcrumbs" class="breadcrumbs">
+            <template #prefix="{ item }">
+              <Icon
+                v-if="item.icon"
+                :icon="item.icon"
+                class="mr-1 h-4 flex items-center justify-center self-center"
+              />
+            </template>
+          </Breadcrumbs>
+          <!-- Email copy icon if email found in subject -->
+          <Button
+            v-if="extractedEmailsFromSubject.length > 0"
+            variant="ghost"
+            size="sm"
+            class="ml-1"
+            :title="`Copy email: ${extractedEmailsFromSubject[0]}`"
+            @click.stop="copyFirstEmail"
+          >
+            <template #icon>
+              <FeatherIcon name="mail" class="h-3.5 w-3.5 text-blue-500" />
+            </template>
+          </Button>
+        </div>
         <TicketSLA />
       </div>
     </template>
@@ -166,6 +181,14 @@ const statusDropdown = computed(() => {
       }),
   }));
 });
+// Extract email addresses from subject
+const extractedEmailsFromSubject = computed(() => {
+  const subject = ticket.value?.doc?.subject || "";
+  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  const matches = subject.match(emailRegex);
+  return matches ? [...new Set(matches)] : [];
+});
+
 const breadcrumbs = computed(() => {
   let items = [{ label: __("Tickets"), route: { name: "TicketsAgent" } }];
   if (route.query.view) {
@@ -186,6 +209,23 @@ const breadcrumbs = computed(() => {
   });
   return items;
 });
+
+async function copyFirstEmail() {
+  const email = extractedEmailsFromSubject.value[0];
+  if (!email) return;
+  try {
+    await navigator.clipboard.writeText(email);
+    toast.info(`Copied "${email}" to clipboard`);
+  } catch (err) {
+    const textArea = document.createElement("textarea");
+    textArea.value = email;
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textArea);
+    toast.info(`Copied "${email}" to clipboard`);
+  }
+}
 
 function updateField(fieldname: string, value: string, callback = () => {}) {
   const doc = ticket.value;

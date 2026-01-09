@@ -1,5 +1,10 @@
 <template>
-  <div>
+  <div
+    @dragover.prevent="onDragOver"
+    @dragleave="onDragLeave"
+    @drop.prevent="onDrop"
+    :class="{ 'bg-blue-50 ring-2 ring-blue-300 rounded': isDragOver }"
+  >
     <div class="flex flex-wrap gap-1">
       <Button
         v-for="value in values"
@@ -8,9 +13,13 @@
         :label="value"
         theme="gray"
         variant="subtle"
-        class="rounded-full"
+        class="rounded-full cursor-grab active:cursor-grabbing"
         :class="{ 'opacity-70': isLocked(value) }"
-        :title="isLocked(value) ? 'This recipient cannot be removed' : ''"
+        :title="isLocked(value) ? 'Locked - Click to copy' : 'Drag to move, click to copy'"
+        :draggable="!isLocked(value)"
+        @dragstart="(e) => onDragStart(e, value)"
+        @dragend="onDragEnd"
+        @click="() => copyToClipboard(value)"
         @keydown.delete.capture.stop="removeLastValue"
       >
         <template #suffix>
@@ -101,7 +110,7 @@ import {
   ComboboxOption,
 } from "@headlessui/vue";
 import { UserAvatar } from "@/components/";
-import { Popover, createResource } from "frappe-ui";
+import { Popover, createResource, toast } from "frappe-ui";
 import { ref, computed, nextTick } from "vue";
 import { watchDebounced } from "@vueuse/core";
 
@@ -118,7 +127,13 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  fieldId: {
+    type: String,
+    default: "",
+  },
 });
+
+const emit = defineEmits(["email-dropped"]);
 
 const values = defineModel();
 
@@ -251,6 +266,72 @@ const removeLastValue = () => {
 
 function setFocus() {
   search.value.$el.focus();
+}
+
+// Drag and drop functionality
+const isDragOver = ref(false);
+
+function onDragStart(e: DragEvent, email: string) {
+  if (e.dataTransfer) {
+    e.dataTransfer.setData("text/plain", email);
+    e.dataTransfer.setData("application/x-email-field", props.fieldId);
+    e.dataTransfer.effectAllowed = "move";
+  }
+}
+
+function onDragEnd() {
+  isDragOver.value = false;
+}
+
+function onDragOver(e: DragEvent) {
+  if (e.dataTransfer?.types.includes("text/plain")) {
+    isDragOver.value = true;
+    e.dataTransfer.dropEffect = "move";
+  }
+}
+
+function onDragLeave() {
+  isDragOver.value = false;
+}
+
+function onDrop(e: DragEvent) {
+  isDragOver.value = false;
+  const email = e.dataTransfer?.getData("text/plain");
+  const sourceField = e.dataTransfer?.getData("application/x-email-field");
+  
+  if (email && sourceField !== props.fieldId) {
+    // Add to this field if not already present
+    if (!values.value?.includes(email)) {
+      if (props.validate && !props.validate(email)) {
+        error.value = props.errorMessage(email);
+        return;
+      }
+      if (!values.value) {
+        values.value = [email];
+      } else {
+        values.value.push(email);
+      }
+    }
+    // Emit event so parent can remove from source
+    emit("email-dropped", { email, sourceField, targetField: props.fieldId });
+  }
+}
+
+// Click to copy functionality
+async function copyToClipboard(email: string) {
+  try {
+    await navigator.clipboard.writeText(email);
+    toast.info(`Copied "${email}" to clipboard`);
+  } catch (err) {
+    // Fallback for older browsers
+    const textArea = document.createElement("textarea");
+    textArea.value = email;
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textArea);
+    toast.info(`Copied "${email}" to clipboard`);
+  }
 }
 
 defineExpose({ setFocus });
