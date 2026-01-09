@@ -191,9 +191,6 @@ class HDTicket(Document):
         ):
             self.send_acknowledgement_email()
 
-        # Auto-assign team based on conditions (runs after communication is created)
-        self.auto_assign_team_by_conditions()
-
     def auto_assign_team_by_conditions(self):
         """
         Automatically assigns ticket to a team based on conditions defined in
