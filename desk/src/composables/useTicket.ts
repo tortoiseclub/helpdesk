@@ -82,3 +82,11 @@ export const useTicket = (ticketId: string): MapValue => {
 
   return ticketMap[ticketId];
 };
+
+export function reloadTicket(ticketId: string) {
+  const ticketData = ticketMap[ticketId];
+  if (!ticketData) return;
+  ticketData.ticket.reload();
+  ticketData.assignees.reload();
+  ticketData.activities.reload();
+}

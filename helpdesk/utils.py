@@ -1,7 +1,6 @@
 import functools
 import json
 import re
-from typing import List
 
 import frappe
 import phonenumbers
@@ -61,7 +60,12 @@ def is_agent(user: str = None) -> bool:
     )
 
 
-def publish_event(event: str, data: dict, user: str = None):
+def publish_event(
+    event: str,
+    room: str | None = None,
+    data: dict | None = None,
+    user: str | None = None,
+):
     """
     Publish `event` to a room with `data`
 
@@ -69,17 +73,15 @@ def publish_event(event: str, data: dict, user: str = None):
     :param data: Data to be sent with the event
     :param user: User to send the event to, defaults to current user
     """
-    room = get_website_room()
+    room = room or get_website_room()
     user = user or frappe.session.user
     frappe.publish_realtime(
         event, message=data, room=room, after_commit=True, user=user
     )
 
 
-def refetch_resource(key: str | List[str], user=None):
-    event = "refetch_resource"
-    data = {"cache_key": key}
-    publish_event(event, data, user=user)
+def get_doc_room(doctype: str, name: str) -> str:
+    return f"open_doc:{doctype}/{name}"
 
 
 def capture_event(event: str):
@@ -428,3 +430,17 @@ def is_json_valid(json_string):
         return True
     except json.JSONDecodeError:
         return False
+
+
+def is_frappe_version(version: str, above: bool = False, below: bool = False):
+    from frappe.pulse.utils import get_frappe_version
+
+    current_version = get_frappe_version()
+    major_version = int(current_version.split(".")[0])
+    target_version = int(version.split(".")[0])
+
+    if above:
+        return major_version >= target_version
+    if below:
+        return major_version < target_version
+    return major_version == target_version

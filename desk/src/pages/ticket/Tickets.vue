@@ -3,7 +3,7 @@
     <LayoutHeader>
       <template #left-header>
         <ViewBreadcrumbs
-          label="Tickets"
+          :label="__('Tickets')"
           :route-name="isCustomerPortal ? 'TicketsCustomer' : 'TicketsAgent'"
           :options="dropdownOptions"
           :dropdown-actions="viewActions"
@@ -80,9 +80,10 @@ import { useTicketStatusStore } from "@/stores/ticketStatus";
 import { View } from "@/types";
 import { getIcon, isCustomerPortal } from "@/utils";
 import { Badge, FeatherIcon, toast, Tooltip, usePageMeta } from "frappe-ui";
-import { computed, h, onMounted, reactive, ref } from "vue";
+import { computed, h, onMounted, onUnmounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import LucideTag from "~icons/lucide/tag";
+import { __ } from "@/translation";
 
 const router = useRouter();
 const route = useRoute();
@@ -109,7 +110,7 @@ const { getStatus } = useTicketStatusStore();
 const listSelections = ref(new Set());
 const selectBannerActions = [
   {
-    label: "Export",
+    label: __("Export"),
     icon: "download",
     onClick: (selections: Set<string>) => {
       listSelections.value = new Set(selections);
@@ -208,7 +209,7 @@ const options = {
   showSelectBanner: true,
   selectBannerActions,
   emptyState: {
-    title: "No Tickets Found",
+    title: __("No Tickets Found"),
     icon: h(TicketIcon, {
       class: "h-10 w-10",
     }),
@@ -223,20 +224,20 @@ const options = {
 function handle_response_by_field(row: any, item: string) {
   if (!row.first_responded_on && dayjs(item).isBefore(new Date())) {
     return h(Badge, {
-      label: "Failed",
+      label: __("Failed"),
       theme: "red",
       variant: "outline",
     });
   }
   if (row.first_responded_on && dayjs(row.first_responded_on).isBefore(item)) {
     return h(Badge, {
-      label: "Fulfilled",
+      label: __("Fulfilled"),
       theme: "green",
       variant: "outline",
     });
   } else if (dayjs(row.first_responded_on).isAfter(item)) {
     return h(Badge, {
-      label: "Failed",
+      label: __("Failed"),
       theme: "red",
       variant: "outline",
     });
@@ -255,19 +256,19 @@ function handle_resolution_by_field(row: any, item: string) {
   const status = getStatus(row.status) || {};
   if (status.category === "Paused") {
     return h(Badge, {
-      label: "Paused",
+      label: __("Paused"),
       theme: "blue",
       variant: "outline",
     });
   } else if (row.resolution_date && dayjs(row.resolution_date).isBefore(item)) {
     return h(Badge, {
-      label: "Fulfilled",
+      label: __("Fulfilled"),
       theme: "green",
       variant: "outline",
     });
   } else if (dayjs(row.resolution_date).isAfter(item)) {
     return h(Badge, {
-      label: "Failed",
+      label: __("Failed"),
       theme: "red",
       variant: "outline",
     });
@@ -341,10 +342,10 @@ let viewDialog = reactive({
 const dropdownOptions = computed(() => {
   const items = [
     {
-      group: "Default Views",
+      group: __("Default Views"),
       items: [
         {
-          label: "List View",
+          label: __("List View"),
           icon: "align-justify",
           onClick: () =>
             router.push({
@@ -358,29 +359,29 @@ const dropdownOptions = computed(() => {
   // Saved Views
   if (getCurrentUserViews.value?.length !== 0) {
     items.push({
-      group: "Saved Views",
+      group: __("Saved Views"),
       items: parseViews(getCurrentUserViews.value),
     });
   }
   if (pinnedViews.value?.length !== 0) {
     items.push({
-      group: "Private Views",
+      group: __("Private Views"),
       items: parseViews(pinnedViews.value),
     });
   }
   if (publicViews.value?.length !== 0) {
     items.push({
-      group: "Public Views",
+      group: __("Public Views"),
       items: parseViews(publicViews.value),
     });
   }
 
   items.push({
-    group: "Create View",
+    group: __("Create View"),
     hideLabel: true,
     items: [
       {
-        label: "Create View",
+        label: __("Create View"),
         icon: "plus",
         onClick: () => {
           resetState();
@@ -400,11 +401,11 @@ const viewActions = (view) => {
 
   let actions = [
     {
-      group: "Default Views",
+      group: __("Default Views"),
       hideLabel: true,
       items: [
         {
-          label: "Duplicate",
+          label: __("Duplicate"),
           icon: h(FeatherIcon, { name: "copy" }),
           onClick: () => {
             viewDialog.view.label = _view.label + " (New)";
@@ -420,7 +421,7 @@ const viewActions = (view) => {
   ];
   if (!_view.public || isManager) {
     actions[0].items.push({
-      label: "Edit",
+      label: __("Edit"),
       icon: h(EditIcon, { class: "h-4 w-4" }),
       onClick: () => {
         viewDialog.view.label = _view.label;
@@ -432,7 +433,7 @@ const viewActions = (view) => {
     });
     if (!_view.public) {
       actions[0].items.push({
-        label: _view?.pinned ? "Unpin View" : "Pin View",
+        label: _view?.pinned ? __("Unpin View") : __("Pin View"),
         icon: h(_view?.pinned ? UnpinIcon : PinIcon, { class: "h-4 w-4" }),
         onClick: () => {
           const newView = {
@@ -445,7 +446,7 @@ const viewActions = (view) => {
     }
     if (isManager && !isCustomerPortal.value) {
       actions[0].items.push({
-        label: _view?.public ? "Make Private" : "Make Public",
+        label: _view?.public ? __("Make Private") : __("Make Public"),
         icon: h(FeatherIcon, {
           name: _view?.public ? "lock" : "unlock",
           class: "h-4 w-4",
@@ -458,12 +459,13 @@ const viewActions = (view) => {
 
           if (_view.public) {
             $dialog({
-              title: `Make ${_view.label} private?`,
-              message:
-                "This view is currently public. Changing it to private will hide it for all the users.",
+              title: __("Make {0} private?", [_view.label]),
+              message: __(
+                "This view is currently public. Changing it to private will hide it for all the users."
+              ),
               actions: [
                 {
-                  label: "Confirm",
+                  label: __("Confirm"),
                   variant: "solid",
                   onClick({ close }) {
                     close();
@@ -479,24 +481,26 @@ const viewActions = (view) => {
       });
     }
     actions.push({
-      group: "Delete View",
+      group: __("Delete View"),
       hideLabel: true,
       items: [
         {
-          label: "Delete",
+          label: __("Delete"),
           icon: "trash-2",
           onClick: () => {
             $dialog({
-              title: `Delete ${_view.label}?`,
-              message: `Are you sure you want to delete this view?
-              ${
-                _view.public
-                  ? "This view is public, and will be removed for all users."
-                  : ""
-              }`,
+              title: __("Delete {0}?", [_view.label]),
+              message:
+                __("Are you sure you want to delete this view?") +
+                (_view.public
+                  ? " " +
+                    __(
+                      "This view is public, and will be removed for all users."
+                    )
+                  : ""),
               actions: [
                 {
-                  label: "Confirm",
+                  label: __("Confirm"),
                   variant: "solid",
                   onClick({ close }) {
                     if (route.query.view === _view.name) {
@@ -507,7 +511,7 @@ const viewActions = (view) => {
                       });
                     }
                     deleteView(_view.name);
-                    handleSuccess("deleted");
+                    handleSuccess(__("deleted"));
                     close();
                   },
                 },
@@ -567,7 +571,7 @@ function handleView(viewInfo, action) {
     view = {
       dt: "HD Ticket",
       type: "list",
-      label: viewInfo.label ?? "List",
+      label: viewInfo.label ?? __("List"),
       icon: viewInfo.icon ?? "",
       route_name: router.currentRoute.value.name as string,
       order_by: listViewRef.value?.list?.params.order_by,
@@ -581,7 +585,7 @@ function handleView(viewInfo, action) {
   // createView
   createView(view, (d) => {
     currentView.value = {
-      label: d.label || "List",
+      label: d.label || __("List"),
       icon: getIcon(d.icon),
     };
     router.push({
@@ -595,8 +599,8 @@ function handleView(viewInfo, action) {
   });
 }
 
-function handleSuccess(msg = "created") {
-  toast.success(`View ${msg}`);
+function handleSuccess(msg = __("created")) {
+  toast.success(__("View {0}", [msg]));
   resetState();
 }
 function resetState() {
@@ -611,17 +615,26 @@ function resetState() {
 onMounted(() => {
   if (!route.query.view) {
     currentView.value = {
-      label: "List",
-      icon: "lucide:align-justify",
+      label: __("List"),
+      icon: LucideAlignJustify,
     };
   }
-  $socket.on("helpdesk:new-ticket", () => {
-    listViewRef.value?.reload();
-  });
+  if (!isCustomerPortal.value) {
+    $socket.on("helpdesk:new-ticket", () => {
+      listViewRef.value?.reload();
+    });
+  }
 });
+
+onUnmounted(() => {
+  if (!isCustomerPortal.value) {
+    $socket.off("helpdesk:new-ticket");
+  }
+});
+
 usePageMeta(() => {
   return {
-    title: "Tickets",
+    title: __("Tickets"),
   };
 });
 </script>

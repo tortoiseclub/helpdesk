@@ -6,6 +6,7 @@ from frappe.model.document import get_controller
 from frappe.utils.caching import redis_cache
 from pypika import Criterion
 
+from helpdesk.api.dashboard import COUNT_NAME
 from helpdesk.utils import (
     call_log_default_columns,
     check_permissions,
@@ -287,18 +288,15 @@ def get_list_data(
                     "type": field.get("type"),
                     "options": options,
                 }
-    total_count = (
-        0
-        if skip_ticket_query
-        else frappe.get_list(doctype, filters=filters, fields="count(*) as count")[0].count
-    )
 
     return {
         "data": data,
         "columns": columns,
         "rows": rows,
         "fields": fields if doctype == "HD Ticket" else [],
-        "total_count": total_count,
+        "total_count": frappe.get_list(doctype, fields=[COUNT_NAME], filters=filters)[
+            0
+        ].get("count", 0),
         "row_count": len(data),
         "group_by_field": group_by_field,
         "view_type": view_type,
@@ -307,7 +305,9 @@ def get_list_data(
 
 @frappe.whitelist()
 @redis_cache()
-def get_filterable_fields(doctype: str, show_customer_portal_fields=False):
+def get_filterable_fields(
+    doctype: str, show_customer_portal_fields=False, ignore_team_restrictions=False
+):
     check_permissions(doctype, None)
     QBDocField = frappe.qb.DocType("DocField")
     QBCustomField = frappe.qb.DocType("Custom Field")
@@ -412,11 +412,12 @@ def get_filterable_fields(doctype: str, show_customer_portal_fields=False):
             }
         )
 
-    enable_restrictions = frappe.db.get_single_value(
-        "HD Settings", "restrict_tickets_by_agent_group"
-    )
-    if enable_restrictions and doctype == "HD Ticket":
-        res = [r for r in res if r.get("fieldname") != "agent_group"]
+    if not ignore_team_restrictions:
+        enable_restrictions = frappe.db.get_single_value(
+            "HD Settings", "restrict_tickets_by_agent_group"
+        )
+        if enable_restrictions and doctype == "HD Ticket":
+            res = [r for r in res if r.get("fieldname") != "agent_group"]
 
     standard_fields = [
         {"fieldname": "name", "fieldtype": "Link", "label": "ID", "options": doctype},

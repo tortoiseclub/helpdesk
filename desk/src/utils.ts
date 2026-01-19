@@ -216,14 +216,14 @@ function hasArabicContent(content: string) {
 
 export function getFontFamily(content: string) {
   const langMap = {
-    default: "!font-[InterVar]",
+    default: "!font-[Inter]",
     arabic: "!font-[system-ui]",
   };
-  let lang = "default";
+  let lang = "";
   if (hasArabicContent(content)) {
     lang = "arabic";
   }
-  return langMap[lang];
+  return langMap[lang] || "";
 }
 
 /**
@@ -271,7 +271,7 @@ export function TemplateOption({ active, option, variant, icon, onClick }) {
     {
       class: [
         active ? "bg-surface-gray-2" : "text-ink-gray-8",
-        "group flex w-full gap-2 items-center rounded-md px-2 py-2 text-base",
+        "group flex w-full gap-2 items-center rounded-md px-2 py-2 text-base hover:bg-surface-gray-3",
         variant == "danger" ? "text-ink-red-3 hover:bg-ink-red-1" : "",
       ],
       onClick: onClick,
@@ -519,6 +519,7 @@ export function ConfirmDelete({ isConfirmingDelete, onConfirmDelete }) {
           variant: "grey",
           onClick: (event) => {
             event.preventDefault();
+            event.stopImmediatePropagation();
             isConfirmingDelete.value = true;
           },
         }),

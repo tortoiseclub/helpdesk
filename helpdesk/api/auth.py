@@ -1,5 +1,6 @@
 import frappe
 
+from helpdesk.utils import get_agents_team
 from helpdesk.utils import is_agent as _is_agent
 
 
@@ -14,6 +15,7 @@ def get_user():
         "user_image",
         "username",
         "time_zone",
+        "language",
     ]
     user = frappe.get_value(
         doctype="User",
@@ -31,6 +33,11 @@ def get_user():
     user_id = user.name
     username = user.username
     is_manager = ("Agent Manager") in frappe.get_roles(current_user)
+    language = user.language or frappe.db.get_single_value(
+        "System Settings", "language"
+    )
+    user_team = get_agents_team()
+    user_team_names = [team["team_name"] for team in user_team]
 
     return {
         "has_desk_access": has_desk_access,
@@ -43,6 +50,8 @@ def get_user():
         "user_name": user_name,
         "username": username,
         "time_zone": user.time_zone,
+        "language": language,
+        "user_teams": user_team_names,
     }
 
 

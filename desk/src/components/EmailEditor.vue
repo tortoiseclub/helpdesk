@@ -113,8 +113,13 @@
                 }
               "
             >
-              <template #default="{ openFileSelector }">
-                <Button variant="ghost" @click="openFileSelector()">
+              <template #default="{ openFileSelector, uploading }">
+                {{ void (isUploading = uploading) }}
+                <Button
+                  variant="ghost"
+                  @click="openFileSelector()"
+                  :loading="uploading"
+                >
                   <template #icon>
                     <AttachmentIcon
                       class="h-4"
@@ -126,13 +131,10 @@
             </FileUploader>
             <Button
               variant="ghost"
-              @click="showCannedResponseSelectorModal = true"
+              @click="showSavedRepliesSelectorModal = true"
             >
               <template #icon>
-                <EmailIcon
-                  class="h-4"
-                  style="color: #000000; stroke-width: 1.2"
-                />
+                <SavedReplyIcon class="h-4" />
               </template>
             </Button>
           </div>
@@ -144,7 +146,7 @@
           <Button label="Discard" @click="handleDiscard" />
           <Button
             variant="solid"
-            :disabled="emailEmpty"
+            :disabled="isDisabled"
             :loading="sendMail.loading"
             :label="label"
             @click="
@@ -157,21 +159,22 @@
       </div>
     </template>
   </TextEditor>
-  <CannedResponseSelectorModal
-    v-if="showCannedResponseSelectorModal"
-    v-model="showCannedResponseSelectorModal"
+  <SavedRepliesSelectorModal
+    v-if="showSavedRepliesSelectorModal"
+    v-model="showSavedRepliesSelectorModal"
     :doctype="doctype"
-    @apply="applyCannedResponse"
+    @apply="applySavedReplies"
+    :ticketId="ticketId"
   />
 </template>
 
 <script setup lang="ts">
 import {
   AttachmentItem,
-  CannedResponseSelectorModal,
+  SavedRepliesSelectorModal,
   MultiSelectInput,
 } from "@/components";
-import { AttachmentIcon, EmailIcon } from "@/components/icons";
+import { AttachmentIcon } from "@/components/icons";
 import { useTyping } from "@/composables/realtime";
 import { useAuthStore } from "@/stores/auth";
 import { PreserveVideoControls } from "@/tiptap-extensions";
@@ -194,9 +197,10 @@ import {
 } from "frappe-ui";
 import { useOnboarding } from "frappe-ui/frappe";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import SavedReplyIcon from "./icons/SavedReplyIcon.vue";
 
 const editorRef = ref(null);
-const showCannedResponseSelectorModal = ref(false);
+const showSavedRepliesSelectorModal = ref(false);
 
 const props = defineProps({
   ticketId: {
@@ -247,8 +251,11 @@ const { isManager } = useAuthStore();
 const { onUserType, cleanup } = useTyping(props.ticketId);
 
 const attachments = ref([]);
-const emailEmpty = computed(() => {
-  return isContentEmpty(newEmail.value);
+const isUploading = ref(false);
+const isDisabled = computed(() => {
+  return (
+    isContentEmpty(newEmail.value) || sendMail.loading || isUploading.value
+  );
 });
 
 // Watch for changes in email content to trigger typing events
@@ -272,9 +279,9 @@ const bcc = computed(() => (bccEmailsClone.value?.length ? true : false));
 const ccInput = ref(null);
 const bccInput = ref(null);
 
-function applyCannedResponse(template) {
-  newEmail.value = template.message;
-  showCannedResponseSelectorModal.value = false;
+function applySavedReplies(template) {
+  newEmail.value = template;
+  showSavedRepliesSelectorModal.value = false;
 }
 
 // Fetch always CC emails from HD Settings

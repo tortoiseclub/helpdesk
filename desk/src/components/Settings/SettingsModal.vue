@@ -5,9 +5,13 @@
     :disableOutsideClickToClose="disableSettingModalOutsideClick"
   >
     <template #body>
-      <div class="flex" :style="{ height: 'calc(100vh - 8rem)' }">
-        <div class="flex w-52 shrink-0 flex-col bg-gray-50 p-2">
-          <h1 class="px-2 pt-2 text-lg font-semibold mb-3">Settings</h1>
+      <div class="flex z-50" :style="{ height: 'calc(100vh - 8rem)' }">
+        <div
+          class="flex w-52 shrink-0 flex-col bg-gray-50 p-2 overflow-y-auto hide-scrollbar"
+        >
+          <h1 class="px-2 pt-2 text-lg font-semibold mb-2">
+            {{ __("Settings") }}
+          </h1>
           <div v-for="tab in tabs">
             <div
               v-if="!tab.hideLabel"
@@ -35,7 +39,7 @@
             </nav>
           </div>
         </div>
-        <div class="flex flex-1 flex-col bg-surface-modal">
+        <div class="flex flex-1 flex-col bg-surface-modal max-w-[816px]">
           <component
             :is="activeTab.component"
             v-if="activeTab"

@@ -35,6 +35,7 @@ from helpdesk.utils import (
     capture_event,
     get_agents_team,
     get_customer,
+    get_doc_room,
     is_admin,
     is_agent,
     publish_event,
@@ -98,7 +99,10 @@ class HDTicket(Document):
         ) or frappe.db.get_single_value("HD Settings", "ticket_reopen_status")
 
     def publish_update(self):
-        publish_event("helpdesk:ticket-update", self.name)
+        room = get_doc_room("HD Ticket", self.name)
+        publish_event(
+            "helpdesk:ticket-update", room=room, data={"ticket_id": self.name}
+        )
         capture_event("ticket_updated")
 
     def autoname(self):
@@ -121,7 +125,6 @@ class HDTicket(Document):
 
     def validate(self):
         self.validate_feedback()
-        self.validate_ticket_type()
 
     def before_save(self):
         self.apply_sla()
@@ -211,7 +214,7 @@ class HDTicket(Document):
             return
 
         capture_event("ticket_created")
-        publish_event("helpdesk:new-ticket", {"name": self.name})
+        publish_event("helpdesk:new-ticket")
         if self.get("description"):
             self.create_communication_via_contact(self.description, new_ticket=True)
             self.handle_inline_media_new_ticket()
@@ -391,11 +394,6 @@ class HDTicket(Document):
         feedback_option = frappe.get_doc("HD Ticket Feedback Option", self.feedback)
         self.feedback_rating = feedback_option.rating
 
-    def validate_ticket_type(self):
-        settings = frappe.get_doc("HD Settings")
-        if settings.is_ticket_type_mandatory and not self.ticket_type:
-            frappe.throw(_("Ticket type is mandatory"))
-
     @property
     def has_agent_replied(self):
         return frappe.db.exists(
@@ -527,8 +525,6 @@ class HDTicket(Document):
 
         if frappe.session.user != agent:
             self.notify_agent(agent, "Assignment")
-
-        publish_event("helpdesk:ticket-assignee-update", {"name": self.name})
 
     def get_assigned_agents(self):
         assignees = get_assignees({"doctype": "HD Ticket", "name": self.name})
@@ -761,9 +757,9 @@ class HDTicket(Document):
                 sender=reply_to_email,
                 subject=subject,
                 with_container=False,
-                in_reply_to=last_communication.name
-                if last_communication.name
-                else None,
+                in_reply_to=(
+                    last_communication.name if last_communication.name else None
+                ),
             )
         except Exception as e:
             frappe.throw(_(e))
@@ -1331,9 +1327,9 @@ class HDTicket(Document):
             "_user_tags",
         ]
         return {
-            "columns": customer_portal_columns
-            if show_customer_portal_fields
-            else columns,
+            "columns": (
+                customer_portal_columns if show_customer_portal_fields else columns
+            ),
             "rows": rows,
         }
 
