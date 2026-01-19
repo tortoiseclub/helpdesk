@@ -399,6 +399,50 @@ async function removeAttachment(attachment) {
   await removeAttachmentFromServer(attachment.name);
 }
 
+/**
+ * Sanitizes HTML content for use in quoted replies.
+ * Converts tables to simple paragraphs to avoid rendering issues in the editor.
+ */
+function sanitizeQuotedContent(html: string): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+
+  // Process all tables - convert them to simple paragraphs with their text content
+  const tables = doc.querySelectorAll("table");
+  tables.forEach((table) => {
+    const rows = table.querySelectorAll("tr");
+    const fragment = doc.createDocumentFragment();
+
+    rows.forEach((row) => {
+      const cells = row.querySelectorAll("td, th");
+      const cellContents: string[] = [];
+
+      cells.forEach((cell) => {
+        // Get the innerHTML to preserve inline formatting (bold, links, etc.)
+        const content = cell.innerHTML.trim();
+        if (content) {
+          cellContents.push(content);
+        }
+      });
+
+      if (cellContents.length > 0) {
+        const p = doc.createElement("p");
+        p.innerHTML = cellContents.join(" ");
+        fragment.appendChild(p);
+      }
+    });
+
+    // Replace the table with the simplified content
+    if (fragment.childNodes.length > 0) {
+      table.parentNode?.replaceChild(fragment, table);
+    } else {
+      table.remove();
+    }
+  });
+
+  return doc.body.innerHTML;
+}
+
 function addToReply(
   body: string,
   toEmails: string[],
@@ -424,10 +468,14 @@ function addToReply(
   if (mergedCc.length > 0) {
     showCC.value = true;
   }
+
+  // Sanitize the quoted content to handle tables properly
+  const sanitizedBody = sanitizeQuotedContent(body);
+
   editorRef.value.editor
     .chain()
     .clearContent()
-    .insertContent(body)
+    .insertContent(sanitizedBody)
     .focus("all")
     .setBlockquote()
     .insertContentAt(0, { type: "paragraph" })

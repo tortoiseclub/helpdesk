@@ -398,6 +398,7 @@ export interface View {
   group_by_field?: string;
   name?: string;
   is_customer_portal?: boolean;
+  advanced_filters_json?: string | any[];
 }
 
 export interface ViewType {

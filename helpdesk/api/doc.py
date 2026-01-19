@@ -16,6 +16,210 @@ from helpdesk.utils import (
 )
 
 
+def build_complex_criterion(doctype, conditions, table=None):
+    """
+    Build a pypika Criterion from complex nested filter conditions.
+    
+    Format: 
+    - Simple condition: ["fieldname", "operator", "value"]
+    - Conjunction: "and" or "or"
+    - Nested group: [condition1, "and"/"or", condition2, ...]
+    
+    Example: [["status", "==", "Open"], "and", [["priority", "==", "High"], "or", ["priority", "==", "Critical"]]]
+    """
+    if table is None:
+        table = frappe.qb.DocType(doctype)
+    
+    if not conditions or len(conditions) == 0:
+        return None
+    
+    # Check if this is a simple condition [field, operator, value]
+    if _is_simple_condition(conditions):
+        return _build_single_criterion(table, conditions[0], conditions[1], conditions[2])
+    
+    # Build compound criterion from list of conditions and conjunctions
+    criteria = []
+    conjunctions = []
+    
+    for item in conditions:
+        if isinstance(item, str) and item.lower() in ("and", "or"):
+            conjunctions.append(item.lower())
+        elif isinstance(item, list):
+            criterion = build_complex_criterion(doctype, item, table)
+            if criterion is not None:
+                criteria.append(criterion)
+    
+    if not criteria:
+        return None
+    
+    if len(criteria) == 1:
+        return criteria[0]
+    
+    # Combine criteria with conjunctions
+    # Default to "and" if no conjunctions specified
+    if not conjunctions:
+        conjunctions = ["and"] * (len(criteria) - 1)
+    
+    result = criteria[0]
+    for i, criterion in enumerate(criteria[1:]):
+        conj = conjunctions[i] if i < len(conjunctions) else "and"
+        if conj == "or":
+            result = result | criterion
+        else:
+            result = result & criterion
+    
+    return result
+
+
+def _is_simple_condition(conditions):
+    """Check if conditions is a simple [field, operator, value] tuple."""
+    return (
+        len(conditions) == 3
+        and isinstance(conditions[0], str)
+        and isinstance(conditions[1], str)
+        and conditions[0].lower() not in ("and", "or")
+        and conditions[1].lower() not in ("and", "or")
+    )
+
+
+def _build_single_criterion(table, field, operator, value):
+    """Build a single criterion from field, operator, and value."""
+    column = getattr(table, field, None)
+    if column is None:
+        return None
+    
+    op = operator.lower() if isinstance(operator, str) else operator
+    
+    # Map operators to pypika operations
+    if op in ("=", "==", "equals"):
+        return column == value
+    elif op in ("!=", "not equals"):
+        return column != value
+    elif op == ">":
+        return column > value
+    elif op == ">=":
+        return column >= value
+    elif op == "<":
+        return column < value
+    elif op == "<=":
+        return column <= value
+    elif op in ("like", "LIKE"):
+        search_val = value if "%" in str(value) else f"%{value}%"
+        return column.like(search_val)
+    elif op in ("not like", "NOT LIKE"):
+        search_val = value if "%" in str(value) else f"%{value}%"
+        return column.not_like(search_val)
+    elif op == "in":
+        if isinstance(value, str):
+            value = [v.strip() for v in value.split(",")]
+        return column.isin(value)
+    elif op in ("not in", "not_in"):
+        if isinstance(value, str):
+            value = [v.strip() for v in value.split(",")]
+        return column.notin(value)
+    elif op == "is":
+        if str(value).lower() == "set":
+            return column.isnotnull() & (column != "")
+        else:  # "not set"
+            return column.isnull() | (column == "")
+    elif op == "between":
+        if isinstance(value, str) and "," in value:
+            parts = value.split(",")
+            return (column >= parts[0].strip()) & (column <= parts[1].strip())
+        elif isinstance(value, (list, tuple)) and len(value) == 2:
+            return (column >= value[0]) & (column <= value[1])
+    
+    # Default to equals
+    return column == value
+
+
+def get_list_with_complex_filters(doctype, fields, conditions, order_by, page_length):
+    """
+    Get list data using complex nested filters with frappe.qb.
+    """
+    table = frappe.qb.DocType(doctype)
+    
+    # Build base query with all fields
+    query = frappe.qb.from_(table)
+    
+    for field in fields:
+        if "." in str(field):
+            # Handle linked field like "contact.email_id" - just get the base field
+            parts = str(field).split(".")
+            col = getattr(table, parts[0], None)
+            if col:
+                query = query.select(col)
+        else:
+            col = getattr(table, field, None)
+            if col:
+                query = query.select(col)
+    
+    # Add complex filter criterion
+    criterion = build_complex_criterion(doctype, conditions, table)
+    if criterion is not None:
+        query = query.where(criterion)
+    
+    # Add ordering
+    if order_by:
+        parts = order_by.split()
+        field_name = parts[0]
+        direction = parts[1].lower() if len(parts) > 1 else "asc"
+        order_field = getattr(table, field_name, None)
+        if order_field:
+            if direction == "desc":
+                query = query.orderby(order_field, order=frappe.qb.desc)
+            else:
+                query = query.orderby(order_field)
+    
+    # Add limit
+    query = query.limit(page_length)
+    
+    return query.run(as_dict=True)
+
+
+def get_count_with_complex_filters(doctype, conditions):
+    """
+    Get count using complex nested filters with frappe.qb.
+    """
+    table = frappe.qb.DocType(doctype)
+    query = frappe.qb.from_(table).select(frappe.qb.functions.Count("*").as_("count"))
+    
+    criterion = build_complex_criterion(doctype, conditions, table)
+    if criterion is not None:
+        query = query.where(criterion)
+    
+    result = query.run()
+    return result[0][0] if result else 0
+
+
+def parse_filters_for_complex(filters):
+    """
+    Check if filters contain complex conditions and extract them.
+    
+    Returns: (simple_filters, complex_conditions)
+    - simple_filters: dict of simple AND filters for frappe.get_list
+    - complex_conditions: nested array for complex query builder (or None)
+    """
+    if not isinstance(filters, dict):
+        return filters, None
+    
+    complex_conditions = None
+    simple_filters = {}
+    
+    for key, value in filters.items():
+        if key == "_conditions":
+            # Complex nested conditions from CFConditions
+            complex_conditions = value if isinstance(value, list) else None
+        elif key.startswith("_"):
+            # Skip other internal keys
+            continue
+        else:
+            # Regular filter
+            simple_filters[key] = value
+    
+    return simple_filters, complex_conditions
+
+
 @frappe.whitelist()
 def get_list_data(
     doctype: str,
@@ -179,16 +383,44 @@ def get_list_data(
     if skip_ticket_query:
         data = []
     else:
-        data = (
-            frappe.get_list(
-                doctype,
-                fields=rows,
-                filters=filters,
-                order_by=order_by,
-                page_length=page_length,
+        # Check for complex nested conditions
+        simple_filters, complex_conditions = parse_filters_for_complex(filters)
+        
+        if complex_conditions and len(complex_conditions) > 0:
+            # Use frappe.qb for complex nested filters
+            try:
+                data = get_list_with_complex_filters(
+                    doctype,
+                    rows,
+                    complex_conditions,
+                    order_by,
+                    page_length,
+                ) or []
+            except Exception as e:
+                frappe.log_error(f"Complex filter error: {e}")
+                # Fallback to simple query
+                data = (
+                    frappe.get_list(
+                        doctype,
+                        fields=rows,
+                        filters=simple_filters,
+                        order_by=order_by,
+                        page_length=page_length,
+                    )
+                    or []
+                )
+        else:
+            # Use standard frappe.get_list for simple filters
+            data = (
+                frappe.get_list(
+                    doctype,
+                    fields=rows,
+                    filters=simple_filters,
+                    order_by=order_by,
+                    page_length=page_length,
+                )
+                or []
             )
-            or []
-        )
 
     if doctype == "TP Call Log":
         data = parse_call_logs(data)
@@ -290,14 +522,25 @@ def get_list_data(
                     "options": options,
                 }
 
+    # Calculate total count using same filters
+    if complex_conditions and len(complex_conditions) > 0:
+        try:
+            total_count = get_count_with_complex_filters(doctype, complex_conditions)
+        except Exception:
+            total_count = len(data)
+    else:
+        total_count = frappe.get_list(
+            doctype,
+            fields=[COUNT_NAME],
+            filters=simple_filters,
+        )[0].get("count", 0)
+
     return {
         "data": data,
         "columns": columns,
         "rows": rows,
         "fields": fields if doctype == "HD Ticket" else [],
-        "total_count": frappe.get_list(doctype, fields=[COUNT_NAME], filters=filters)[
-            0
-        ].get("count", 0),
+        "total_count": total_count,
         "row_count": len(data),
         "group_by_field": group_by_field,
         "view_type": view_type,
