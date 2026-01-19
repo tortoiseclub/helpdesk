@@ -132,9 +132,50 @@ def _build_single_criterion(table, field, operator, value):
     return column == value
 
 
-def get_list_with_complex_filters(doctype, fields, conditions, order_by, page_length):
+def build_simple_filters_criterion(table, simple_filters):
+    """
+    Convert simple key-value filters dict to pypika Criterion.
+    Supports formats like:
+    - {"status": "Open"} -> status = "Open"
+    - {"status": ["in", ["Open", "Replied"]]} -> status IN ("Open", "Replied")
+    - {"priority": ["!=", "Low"]} -> priority != "Low"
+    """
+    if not simple_filters:
+        return None
+    
+    criteria = []
+    for field, value in simple_filters.items():        
+        column = getattr(table, field, None)
+        if column is None:
+            continue
+        
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            # Format: ["operator", "value"]
+            op = value[0].lower() if isinstance(value[0], str) else value[0]
+            val = value[1]
+            criterion = _build_single_criterion(table, field, op, val)
+        else:
+            # Simple equality
+            criterion = column == value
+        
+        if criterion is not None:
+            criteria.append(criterion)
+    
+    if not criteria:
+        return None
+    
+    # Combine all simple filters with AND
+    result = criteria[0]
+    for criterion in criteria[1:]:
+        result = result & criterion
+    
+    return result
+
+
+def get_list_with_complex_filters(doctype, fields, conditions, order_by, page_length, simple_filters=None):
     """
     Get list data using complex nested filters with frappe.qb.
+    Optionally combines with simple filters (AND logic).
     """
     table = frappe.qb.DocType(doctype)
     
@@ -153,10 +194,17 @@ def get_list_with_complex_filters(doctype, fields, conditions, order_by, page_le
             if col:
                 query = query.select(col)
     
-    # Add complex filter criterion
-    criterion = build_complex_criterion(doctype, conditions, table)
-    if criterion is not None:
-        query = query.where(criterion)
+    # Build combined criterion from complex conditions and simple filters
+    complex_criterion = build_complex_criterion(doctype, conditions, table)
+    simple_criterion = build_simple_filters_criterion(table, simple_filters)
+    
+    # Combine both with AND
+    if complex_criterion is not None and simple_criterion is not None:
+        query = query.where(complex_criterion & simple_criterion)
+    elif complex_criterion is not None:
+        query = query.where(complex_criterion)
+    elif simple_criterion is not None:
+        query = query.where(simple_criterion)
     
     # Add ordering
     if order_by:
@@ -176,16 +224,25 @@ def get_list_with_complex_filters(doctype, fields, conditions, order_by, page_le
     return query.run(as_dict=True)
 
 
-def get_count_with_complex_filters(doctype, conditions):
+def get_count_with_complex_filters(doctype, conditions, simple_filters=None):
     """
     Get count using complex nested filters with frappe.qb.
+    Optionally combines with simple filters (AND logic).
     """
     table = frappe.qb.DocType(doctype)
     query = frappe.qb.from_(table).select(frappe.qb.functions.Count("*").as_("count"))
     
-    criterion = build_complex_criterion(doctype, conditions, table)
-    if criterion is not None:
-        query = query.where(criterion)
+    # Build combined criterion
+    complex_criterion = build_complex_criterion(doctype, conditions, table)
+    simple_criterion = build_simple_filters_criterion(table, simple_filters)
+    
+    # Combine both with AND
+    if complex_criterion is not None and simple_criterion is not None:
+        query = query.where(complex_criterion & simple_criterion)
+    elif complex_criterion is not None:
+        query = query.where(complex_criterion)
+    elif simple_criterion is not None:
+        query = query.where(simple_criterion)
     
     result = query.run()
     return result[0][0] if result else 0
@@ -209,9 +266,6 @@ def parse_filters_for_complex(filters):
         if key == "_conditions":
             # Complex nested conditions from CFConditions
             complex_conditions = value if isinstance(value, list) else None
-        elif key.startswith("_"):
-            # Skip other internal keys
-            continue
         else:
             # Regular filter
             simple_filters[key] = value
@@ -386,7 +440,7 @@ def get_list_data(
         simple_filters, complex_conditions = parse_filters_for_complex(filters)
         
         if complex_conditions and len(complex_conditions) > 0:
-            # Use frappe.qb for complex nested filters
+            # Use frappe.qb for complex nested filters (combined with simple filters)
             try:
                 data = get_list_with_complex_filters(
                     doctype,
@@ -394,6 +448,7 @@ def get_list_data(
                     complex_conditions,
                     order_by,
                     page_length,
+                    simple_filters=simple_filters,  # Pass simple filters to combine
                 ) or []
             except Exception as e:
                 frappe.log_error(f"Complex filter error: {e}")
@@ -521,10 +576,14 @@ def get_list_data(
                     "options": options,
                 }
 
-    # Calculate total count using same filters
+    # Calculate total count using same filters (both complex and simple combined)
     if complex_conditions and len(complex_conditions) > 0:
         try:
-            total_count = get_count_with_complex_filters(doctype, complex_conditions)
+            total_count = get_count_with_complex_filters(
+                doctype, 
+                complex_conditions, 
+                simple_filters=simple_filters  # Pass simple filters to combine
+            )
         except Exception:
             total_count = len(data)
     else:
