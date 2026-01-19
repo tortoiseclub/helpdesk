@@ -43,22 +43,34 @@
         v-model:content="content"
         placeholder="Hi John, we are looking into this issue."
         :ticketId="ticketId"
+        :communicationId="currentCommunicationId"
         :to-emails="toEmails"
         :cc-emails="ccEmails"
         :bcc-emails="bccEmails"
         @submit="
           () => {
             showEmailBox = false;
+            isEmailBoxMinimized.value = false;
+            currentCommunicationId = null;
             emit('update');
           }
         "
         @discard="
           () => {
             showEmailBox = false;
+            isEmailBoxMinimized.value = false;
+            currentCommunicationId = null;
           }
         "
       />
     </div>
+    <DraftIndicator
+      v-if="isEmailBoxMinimized && hasDraft"
+      :ticketId="ticketId"
+      :communicationId="currentCommunicationId"
+      @expand="handleExpandDraft"
+      @discard="handleDiscardDraft"
+    />
     <div
       ref="commentBoxRef"
       v-show="showCommentBox"
@@ -95,17 +107,42 @@
 </template>
 
 <script setup lang="ts">
-import { CommentTextEditor, EmailEditor, TypingIndicator } from "@/components";
+import { CommentTextEditor, EmailEditor, TypingIndicator, DraftIndicator } from "@/components";
 import { CommentIcon, EmailIcon } from "@/components/icons/";
 import { useDevice } from "@/composables";
+import { useEmailDraft } from "@/composables/useEmailDraft";
 import { useScreenSize } from "@/composables/screen";
 import { useShortcut } from "@/composables/shortcuts";
-import { showCommentBox, showEmailBox } from "@/pages/ticket/modalStates";
-import { ref, watch } from "vue";
+import { showCommentBox, showEmailBox, isEmailBoxMinimized, minimizeEmailBox, expandEmailBox } from "@/pages/ticket/modalStates";
+import { computed, nextTick, ref, watch, type Ref } from "vue";
 import { onClickOutside } from "@vueuse/core";
 
 const emit = defineEmits(["update"]);
 const content = defineModel("content");
+
+const props = defineProps({
+  doctype: {
+    type: String,
+    default: "HD Ticket",
+  },
+  ticketId: {
+    type: String,
+    default: null,
+  },
+  toEmails: {
+    type: Array,
+    default: () => [],
+  },
+  ccEmails: {
+    type: Array,
+    default: () => [],
+  },
+  bccEmails: {
+    type: Array,
+    default: () => [],
+  },
+});
+
 const { isMac } = useDevice();
 const { isMobileView } = useScreenSize();
 let doc = defineModel();
@@ -115,11 +152,37 @@ const commentTextEditorRef = ref(null);
 const emailBoxRef = ref(null);
 const commentBoxRef = ref(null);
 
+// Track the current communication being replied to
+const currentCommunicationId = ref<string | null>(null);
+
+const draftComposable = useEmailDraft(props.ticketId, currentCommunicationId.value);
+
+// Update the composable's communicationId when our ref changes
+watch(currentCommunicationId, (newId) => {
+  draftComposable.updateCommunicationId(newId);
+});
+
+const hasDraft = computed(() => {
+  const d = draftComposable.draft.value;
+  if (!d) return false;
+
+  // Only consider body content and attachments as a "real" draft.
+  // Recipients alone (from initial props) are not a meaningful draft.
+  const hasBody = !!(d.content && d.content.trim());
+  const hasAttachments = !!(Array.isArray(d.attachments) && d.attachments.length);
+
+  return hasBody || hasAttachments;
+});
+
 function toggleEmailBox() {
   if (showCommentBox.value) {
     showCommentBox.value = false;
   }
+  if (isEmailBoxMinimized.value) {
+    expandEmailBox();
+  } else {
   showEmailBox.value = !showEmailBox.value;
+  }
 }
 
 function toggleCommentBox() {
@@ -148,39 +211,40 @@ function splitIfString(str: string | string[]) {
   return str;
 }
 
-function replyToEmail(data: object) {
+function replyToEmail(data: { communicationId?: string; content: string; to: string | string[]; cc?: string | string[]; bcc?: string | string[] }) {
+  // Set the communication ID for this reply
+  const newCommunicationId = data.communicationId || null;
+
+  // Update the current communication ID first
+  currentCommunicationId.value = newCommunicationId;
+
+  expandEmailBox();
   showEmailBox.value = true;
 
+  // Always call addToReply - it will handle checking for existing drafts and setting up quoted content
+  nextTick(() => {
   emailEditorRef.value.addToReply(
     data.content,
     splitIfString(data.to),
-    splitIfString(data.cc),
-    splitIfString(data.bcc)
+      splitIfString(data.cc || []),
+      splitIfString(data.bcc || []),
+      newCommunicationId
   );
+  });
 }
 
-const props = defineProps({
-  doctype: {
-    type: String,
-    default: "HD Ticket",
-  },
-  ticketId: {
-    type: String,
-    default: null,
-  },
-  toEmails: {
-    type: Array,
-    default: () => [],
-  },
-  ccEmails: {
-    type: Array,
-    default: () => [],
-  },
-  bccEmails: {
-    type: Array,
-    default: () => [],
-  },
-});
+function handleExpandDraft() {
+  expandEmailBox();
+  showEmailBox.value = true;
+  nextTick(() => {
+    emailEditorRef.value?.editor?.commands?.focus();
+  });
+}
+
+function handleDiscardDraft() {
+  isEmailBoxMinimized.value = false;
+  currentCommunicationId.value = null;
+}
 
 watch(
   () => showEmailBox.value,
@@ -218,7 +282,12 @@ onClickOutside(
   emailBoxRef,
   () => {
     if (showEmailBox.value) {
+      // Check if there's draft content before minimizing
+      if (hasDraft.value) {
+        minimizeEmailBox();
+      } else {
       showEmailBox.value = false;
+      }
     }
   },
   {

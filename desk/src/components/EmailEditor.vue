@@ -176,6 +176,7 @@ import {
 } from "@/components";
 import { AttachmentIcon } from "@/components/icons";
 import { useTyping } from "@/composables/realtime";
+import { useEmailDraft } from "@/composables/useEmailDraft";
 import { useAuthStore } from "@/stores/auth";
 import { PreserveVideoControls } from "@/tiptap-extensions";
 import {
@@ -187,7 +188,6 @@ import {
   validateEmail,
 } from "@/utils";
 // import { EditorContent } from "@tiptap/vue-3";
-import { useStorage } from "@vueuse/core";
 import {
   FileUploader,
   TextEditor,
@@ -196,7 +196,8 @@ import {
   toast,
 } from "frappe-ui";
 import { useOnboarding } from "frappe-ui/frappe";
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useDebounceFn } from "@vueuse/core";
 import SavedReplyIcon from "./icons/SavedReplyIcon.vue";
 
 const editorRef = ref(null);
@@ -204,6 +205,10 @@ const showSavedRepliesSelectorModal = ref(false);
 
 const props = defineProps({
   ticketId: {
+    type: String,
+    default: null,
+  },
+  communicationId: {
     type: String,
     default: null,
   },
@@ -243,12 +248,47 @@ const label = computed(() => {
 
 const emit = defineEmits(["submit", "discard"]);
 
-const newEmail = useStorage("emailBoxContent" + props.ticketId, null);
 const { updateOnboardingStep } = useOnboarding("helpdesk");
 const { isManager } = useAuthStore();
 
+// Initialize draft composable with ticket and communication IDs
+const draftComposable = useEmailDraft(props.ticketId, props.communicationId);
+const { saveDraft, loadDraft, clearDraft, updateCommunicationId, draft } = draftComposable;
+
+// Flag to control when draft saving is enabled
+// Only save drafts after reply content is set (via addToReply)
+const draftSavingEnabled = ref(false);
+
+// Watch for communicationId changes and update the draft composable
+watch(() => props.communicationId, (newId, oldId) => {
+  if (newId !== oldId) {
+    // Communication changed - update the draft key and clear state
+    // Don't load existing drafts here - let replyToEmail decide what to do
+    updateCommunicationId(newId || null);
+
+    // Disable draft saving temporarily (will be enabled by addToReply or existing draft)
+    draftSavingEnabled.value = false;
+
+    // Clear current editor content and state - let replyToEmail handle setup
+    newEmail.value = null;
+    attachments.value = [];
+
+    // Reset email arrays to props (will be updated by replyToEmail if needed)
+    toEmailsClone.value = toStringArray(props.toEmails);
+    ccEmailsClone.value = toStringArray(props.ccEmails);
+    bccEmailsClone.value = toStringArray(props.bccEmails);
+
+    // Hide CC/BCC sections
+    showCC.value = false;
+    showBCC.value = false;
+  }
+});
+
 // Initialize typing composable
 const { onUserType, cleanup } = useTyping(props.ticketId);
+
+// Email content - use ref instead of useStorage, will sync with draft
+const newEmail = ref<string | null>(null);
 
 const attachments = ref([]);
 const isUploading = ref(false);
@@ -269,15 +309,75 @@ onBeforeUnmount(() => {
   cleanup();
 });
 
-const toEmailsClone = ref([...props.toEmails]);
-const ccEmailsClone = ref([...props.ccEmails]);
-const bccEmailsClone = ref([...props.bccEmails]);
+// Helper to convert props (which may contain objects) to string arrays
+function toStringArray(arr: unknown[]): string[] {
+  return arr
+    .filter((item) => typeof item === "string" && item.trim() !== "")
+    .map((item) => String(item).trim());
+}
+
+const toEmailsClone = ref<string[]>(toStringArray(props.toEmails));
+const ccEmailsClone = ref<string[]>(toStringArray(props.ccEmails));
+const bccEmailsClone = ref<string[]>(toStringArray(props.bccEmails));
 const showCC = ref(false);
 const showBCC = ref(false);
 const cc = computed(() => (ccEmailsClone.value?.length ? true : false));
 const bcc = computed(() => (bccEmailsClone.value?.length ? true : false));
 const ccInput = ref(null);
 const bccInput = ref(null);
+
+// Auto-save draft with debouncing - only when enabled
+const autoSaveDraft = useDebounceFn(() => {
+  if (!draftSavingEnabled.value) return;
+  saveDraft({
+    content: newEmail.value,
+    to: toEmailsClone.value,
+    cc: ccEmailsClone.value,
+    bcc: bccEmailsClone.value,
+    attachments: attachments.value,
+  });
+}, 500);
+
+// Watch all draft fields and auto-save (only when enabled)
+watch([newEmail, toEmailsClone, ccEmailsClone, bccEmailsClone, attachments], () => {
+  if (draftSavingEnabled.value) {
+    autoSaveDraft();
+  }
+}, { deep: true });
+
+// Restore draft on mount - only for initial state (no communicationId)
+onMounted(() => {
+  // Only run initial draft loading if we don't have a communicationId yet
+  // (communicationId changes are handled by the watcher)
+  if (!props.communicationId) {
+    const draft = loadDraft();
+    if (draft && draft.content) {
+      // Existing draft found - restore it and enable saving
+      newEmail.value = draft.content;
+      toEmailsClone.value = draft.to.length > 0 ? draft.to : toStringArray(props.toEmails);
+      ccEmailsClone.value = draft.cc.length > 0 ? draft.cc : toStringArray(props.ccEmails);
+      bccEmailsClone.value = draft.bcc.length > 0 ? draft.bcc : toStringArray(props.bccEmails);
+      attachments.value = draft.attachments || [];
+
+      // Enable draft saving since we have an existing draft
+      draftSavingEnabled.value = true;
+
+      // Show CC/BCC sections if they have content
+      if (ccEmailsClone.value.length > 0) {
+        showCC.value = true;
+      }
+      if (bccEmailsClone.value.length > 0) {
+        showBCC.value = true;
+      }
+    } else {
+      // No draft - initialize with props (convert to string arrays)
+      // Don't enable draft saving yet - wait for addToReply
+      toEmailsClone.value = toStringArray(props.toEmails);
+      ccEmailsClone.value = toStringArray(props.ccEmails);
+      bccEmailsClone.value = toStringArray(props.bccEmails);
+    }
+  }
+});
 
 function applySavedReplies(template) {
   newEmail.value = template;
@@ -338,6 +438,7 @@ const sendMail = createResource({
   }),
   onSuccess: () => {
     resetState();
+    clearDraft();
     emit("submit");
 
     if (isManager) {
@@ -454,8 +555,43 @@ function addToReply(
   body: string,
   toEmails: string[],
   ccEmails: string[],
-  bccEmails: string[]
+  bccEmails: string[],
+  communicationId?: string | null
 ) {
+  // Check if there's an existing draft for this communication first
+  const existingDraft = loadDraft();
+  const hasExistingDraft = existingDraft && existingDraft.content && existingDraft.content.trim();
+
+  if (hasExistingDraft) {
+    // Restore existing draft instead of setting up quoted content
+    newEmail.value = existingDraft.content;
+    toEmailsClone.value = existingDraft.to.length > 0 ? existingDraft.to : toEmails;
+    ccEmailsClone.value = existingDraft.cc.length > 0 ? existingDraft.cc : ccEmails;
+    bccEmailsClone.value = existingDraft.bcc.length > 0 ? existingDraft.bcc : bccEmails;
+    attachments.value = existingDraft.attachments || [];
+
+    // Enable draft saving since we have an existing draft
+    draftSavingEnabled.value = true;
+
+    // Show CC/BCC sections if they have content
+    if (ccEmailsClone.value.length > 0) {
+      showCC.value = true;
+    }
+    if (bccEmailsClone.value.length > 0) {
+      showBCC.value = true;
+    }
+
+    // Set editor content to the existing draft
+    nextTick(() => {
+      if (editorRef.value?.editor) {
+        editorRef.value.editor.commands.setContent(existingDraft.content);
+      }
+    });
+
+    return; // Don't set up quoted content
+  }
+
+  // No existing draft - set up the reply with quoted content
   toEmailsClone.value = toEmails;
   // Merge always CC emails with provided CC emails
   const allCc = new Set([
@@ -488,14 +624,36 @@ function addToReply(
     .insertContentAt(0, { type: "paragraph" })
     .focus("start")
     .run();
+
+  // Update newEmail ref with the content that was just inserted
+  newEmail.value = editorRef.value.editor.getHTML();
+
+  // Enable draft saving now that we have reply content
+  draftSavingEnabled.value = true;
+
+  // Save the initial draft with the quoted content
+  nextTick(() => {
+    saveDraft({
+      content: newEmail.value,
+      to: toEmailsClone.value,
+      cc: ccEmailsClone.value,
+      bcc: bccEmailsClone.value,
+      attachments: attachments.value,
+    });
+  });
 }
 
 function resetState() {
+  // Disable draft saving
+  draftSavingEnabled.value = false;
   newEmail.value = null;
   attachments.value = [];
 }
 
 function handleDiscard() {
+  // Disable draft saving first
+  draftSavingEnabled.value = false;
+  
   attachments.value = [];
   newEmail.value = null;
 
@@ -506,6 +664,7 @@ function handleDiscard() {
   showCC.value = alwaysCcEmails.value.length > 0;
   showBCC.value = false;
 
+  clearDraft();
   emit("discard");
 }
 

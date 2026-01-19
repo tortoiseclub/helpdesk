@@ -36,7 +36,7 @@
   <CommunicationArea
     ref="communicationAreaRef"
     :ticketId="String(ticket.doc?.name)"
-    :to-emails="[ticket.doc?.raised_by]"
+    :to-emails="getToEmails()"
     :cc-emails="[]"
     :bcc-emails="[]"
     :key="ticket.doc?.name"
@@ -81,6 +81,15 @@ const ticketAgentActivitiesRef = ref(null);
 const communicationAreaRef = ref(null);
 const telephonyStore = useTelephonyStore();
 const { isCallingEnabled } = storeToRefs(telephonyStore);
+
+function getToEmails() {
+  const raisedBy = ticket.value?.doc?.raised_by;
+  // Ensure raisedBy is a string before adding to array
+  if (raisedBy && typeof raisedBy === 'string') {
+    return [raisedBy];
+  }
+  return [];
+}
 
 const tabs: ComputedRef<TabObject[]> = computed(() => {
   const _tabs: TabObject[] = [

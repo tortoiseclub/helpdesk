@@ -205,6 +205,7 @@ const status = computed(() => {
 const reply = () => {
   const user = auth.user.value;
   emit("reply", {
+    communicationId: name,
     content: content,
     to: user === sender.name ? to : sender.name,
   });
@@ -242,6 +243,7 @@ const replyAll = () => {
   }
 
   emit("reply", {
+    communicationId: name,
     content: content,
     to: _to,
     cc: _cc.filter(Boolean),
