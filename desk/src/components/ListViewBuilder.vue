@@ -533,6 +533,9 @@ const listViewData = reactive({
   sortableFields,
 });
 
+// Advanced filter state - stores nested conditions array for complex AND/OR filters
+const advancedFiltersJson = ref<any[]>([]);
+
 provide("listViewData", listViewData);
 
 provide("listViewActions", {
@@ -540,10 +543,21 @@ provide("listViewActions", {
   applySort,
   updateColumns,
   reload,
+  getAdvancedFilters: () => advancedFiltersJson.value,
 });
 
 function applyFilters(filters) {
   isViewUpdated.value = true;
+  
+  // Check if this contains complex conditions
+  if (filters._conditions && filters._conditions.length > 0) {
+    // Store the conditions for view persistence
+    advancedFiltersJson.value = filters._conditions;
+  } else {
+    // Clear advanced filters when using simple filters
+    advancedFiltersJson.value = [];
+  }
+  
   defaultParams.filters = { ...filters };
   list.submit({ ...defaultParams });
 
@@ -580,6 +594,7 @@ function reload(reset: boolean = false) {
     defaultParams.columns = [];
     defaultParams.rows = [];
     defaultParams.is_default = true;
+    advancedFiltersJson.value = [];
   }
   list.reload({ ...defaultParams });
 }
@@ -611,6 +626,10 @@ function handleViewUpdate() {
     dt: options.value.doctype,
     route_name: route.name,
     is_customer_portal: options.value.isCustomerPortal,
+    // Store advanced filters JSON for view persistence
+    advanced_filters_json: advancedFiltersJson.value.length > 0
+      ? JSON.stringify(advancedFiltersJson.value) 
+      : null,
   };
   updateView(view, () => {
     isViewUpdated.value = false;
@@ -638,12 +657,27 @@ function handleViewChanges() {
   if (!currentView) {
     router.push({ name: route.name });
     reload(true);
+    advancedFiltersJson.value = [];
     return;
   }
   defaultParams.filters = currentView.filters;
   defaultParams.order_by = currentView.order_by || "modified desc";
   defaultParams.columns = currentView.columns;
   defaultParams.rows = currentView.rows;
+  
+  // Restore advanced filters if present in the view
+  if ((currentView as any).advanced_filters_json) {
+    try {
+      const parsed = typeof (currentView as any).advanced_filters_json === 'string'
+        ? JSON.parse((currentView as any).advanced_filters_json)
+        : (currentView as any).advanced_filters_json;
+      advancedFiltersJson.value = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      advancedFiltersJson.value = [];
+    }
+  } else {
+    advancedFiltersJson.value = [];
+  }
 
   list.submit({ ...defaultParams });
 }

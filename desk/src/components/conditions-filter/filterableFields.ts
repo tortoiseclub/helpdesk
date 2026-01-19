@@ -5,10 +5,11 @@ export const filterableFields = createResource({
   params: {
     doctype: "HD Ticket",
     ignore_team_restrictions: true,
+    append_assign: true,
   },
   transform: (data) => {
     data = data
-      .filter((field) => !field.fieldname.startsWith("_"))
+      .filter((field) => !field.fieldname.startsWith("_") || field.fieldname === "_assign")
       .map((field) => {
         return {
           label: field.label,

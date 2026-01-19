@@ -19,6 +19,7 @@
   "public",
   "filters_tab",
   "filters",
+  "advanced_filters_json",
   "order_by_tab",
   "order_by",
   "list_tab",
@@ -101,6 +102,12 @@
    "label": "Filters"
   },
   {
+   "fieldname": "advanced_filters_json",
+   "fieldtype": "Code",
+   "label": "Advanced Filters JSON",
+   "description": "Stores complex AND/OR filter conditions"
+  },
+  {
    "fieldname": "order_by_tab",
    "fieldtype": "Tab Break",
    "label": "Order By"
@@ -154,7 +161,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-02-19 18:02:31.546741",
+ "modified": "2026-01-19 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Helpdesk",
  "name": "HD View",
