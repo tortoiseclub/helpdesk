@@ -595,7 +595,6 @@ function reload(reset: boolean = false) {
     defaultParams.columns = [];
     defaultParams.rows = [];
     defaultParams.is_default = true;
-    advancedFiltersJson.value = [];
   }
   list.reload({ ...defaultParams });
 }
@@ -658,18 +657,14 @@ function handleViewChanges() {
   if (!currentView) {
     router.push({ name: route.name });
     reload(true);
-    advancedFiltersJson.value = [];
-    // Clear filter component state
-    filterRef.value?.clearfilter();
+    // Reset filter component UI state (without applying filters)
+    filterRef.value?.resetState();
     return;
   }
   defaultParams.filters = currentView.filters;
   defaultParams.order_by = currentView.order_by || "modified desc";
   defaultParams.columns = currentView.columns;
   defaultParams.rows = currentView.rows;
-
-  // Clear existing filter component state before applying new view filters
-  filterRef.value?.clearfilter();
 
   // Restore advanced filters if present in the view
   if ((currentView as any).advanced_filters_json) {
@@ -684,6 +679,9 @@ function handleViewChanges() {
   } else {
     advancedFiltersJson.value = [];
   }
+
+  // Sync the Filter component's advanced filter state from parent
+  filterRef.value?.syncFromParentAdvancedFilters();
 
   list.submit({ ...defaultParams });
 }

@@ -766,6 +766,19 @@ function clearfilter(close) {
   close && close();
 }
 
+function resetState() {
+  // Reset UI state without applying filters
+  // This is used when filters are being restored from a view/default
+  // Note: Advanced filters are handled separately via syncFromParentAdvancedFilters
+  // Note: filters computed property will automatically sync from list params
+}
+
+function syncFromParentAdvancedFilters() {
+  // Sync advanced filter state from parent
+  // This is called when views change to ensure UI state matches
+  syncAdvancedFiltersFromParent();
+}
+
 function updateValue(value, filter) {
   value = value.target ? value.target.value : value;
   if (filter.operator === "between") {
@@ -956,5 +969,7 @@ const timespanOptions = [
 
 defineExpose({
   clearfilter,
+  resetState,
+  syncFromParentAdvancedFilters,
 });
 </script>
