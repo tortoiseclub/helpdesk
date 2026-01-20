@@ -302,49 +302,6 @@ def get_list_data(
 
     handle_at_me_support(filters)
 
-    def pop_participant_filter(current_filters):
-        if isinstance(current_filters, dict):
-            return current_filters.pop("participant_email", None)
-
-        if isinstance(current_filters, list):
-            for idx, item in enumerate(list(current_filters)):
-                if isinstance(item, dict) and item.get("name") == "participant_email":
-                    current_filters.pop(idx)
-                    return item.get("value")
-
-                if isinstance(item, (list, tuple)) and len(item) >= 1:
-                    fieldname = item[0]
-                    if fieldname == "participant_email":
-                        value = item[-1] if len(item) >= 2 else None
-                        current_filters.pop(idx)
-                        return value
-
-        return None
-
-    def normalize_participant_value(raw_value):
-        if isinstance(raw_value, (list, tuple)) and raw_value:
-            raw_value = raw_value[-1]
-
-        raw_value = (raw_value or "").strip()
-        if not raw_value:
-            return None
-
-        if raw_value.startswith("%") and raw_value.endswith("%"):
-            return raw_value
-
-        return f"%{raw_value}%"
-
-    def add_ticket_name_filter(current_filters, ticket_names):
-        if isinstance(current_filters, dict):
-            current_filters["name"] = ["in", ticket_names]
-            return current_filters
-
-        if isinstance(current_filters, list):
-            current_filters.append(["name", "in", ticket_names])
-            return current_filters
-
-        return {"name": ["in", ticket_names]}
-
     _list = get_controller(doctype)
     default_rows = []
     if hasattr(_list, "default_list_data"):
@@ -403,68 +360,23 @@ def get_list_data(
     if group_by_field and group_by_field not in rows:
         rows.append(group_by_field)
 
-    skip_ticket_query = False
-    if doctype == "HD Ticket":
-        participant_filter_value = pop_participant_filter(filters)
-        participant_pattern = normalize_participant_value(participant_filter_value)
-
-        if participant_pattern:
-            Communication = frappe.qb.DocType("Communication")
-            participant_ticket_names = (
-                frappe.qb.from_(Communication)
-                .select(Communication.reference_name)
-                .distinct()
-                .where(Communication.reference_doctype == "HD Ticket")
-                .where(Communication.reference_name.isnotnull())
-                .where(
-                    Criterion.any(
-                        [
-                            Communication.sender.like(participant_pattern),
-                            Communication.recipients.like(participant_pattern),
-                        ]
-                    )
-                )
-                .run(pluck=Communication.reference_name)
-            )
-
-            if not participant_ticket_names:
-                skip_ticket_query = True
-            else:
-                filters = add_ticket_name_filter(filters, participant_ticket_names)
-
     rows.append("name") if "name" not in rows else rows
-    if skip_ticket_query:
-        data = []
-    else:
-        # Check for complex nested conditions
-        simple_filters, complex_conditions = parse_filters_for_complex(filters)
-        
-        if complex_conditions and len(complex_conditions) > 0:
-            # Use frappe.qb for complex nested filters (combined with simple filters)
-            try:
-                data = get_list_with_complex_filters(
-                    doctype,
-                    rows,
-                    complex_conditions,
-                    order_by,
-                    page_length,
-                    simple_filters=simple_filters,  # Pass simple filters to combine
-                ) or []
-            except Exception as e:
-                frappe.log_error(f"Complex filter error: {e}")
-                # Fallback to simple query
-                data = (
-                    frappe.get_list(
-                        doctype,
-                        fields=rows,
-                        filters=simple_filters,
-                        order_by=order_by,
-                        page_length=page_length,
-                    )
-                    or []
-                )
-        else:
-            # Use standard frappe.get_list for simple filters
+    # Check for complex nested conditions
+    simple_filters, complex_conditions = parse_filters_for_complex(filters)
+    if complex_conditions and len(complex_conditions) > 0:
+        # Use frappe.qb for complex nested filters (combined with simple filters)
+        try:
+            data = get_list_with_complex_filters(
+                doctype,
+                rows,
+                complex_conditions,
+                order_by,
+                page_length,
+                simple_filters=simple_filters,  # Pass simple filters to combine
+            ) or []
+        except Exception as e:
+            frappe.log_error(f"Complex filter error: {e}")
+            # Fallback to simple query
             data = (
                 frappe.get_list(
                     doctype,
@@ -475,6 +387,18 @@ def get_list_data(
                 )
                 or []
             )
+    else:
+        # Use standard frappe.get_list for simple filters
+        data = (
+            frappe.get_list(
+                doctype,
+                fields=rows,
+                filters=simple_filters,
+                order_by=order_by,
+                page_length=page_length,
+            )
+            or []
+        )
 
     if doctype == "TP Call Log":
         data = parse_call_logs(data)
@@ -812,7 +736,7 @@ def get_quick_filters(doctype: str, show_customer_portal_fields=False):
         quick_filters.append(
             {
                 "label": _("From/To Email"),
-                "name": "participant_email",
+                "name": "participant_emails",
                 "type": "Data",
                 "options": [],
             }
