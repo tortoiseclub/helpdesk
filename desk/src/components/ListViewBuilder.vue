@@ -13,7 +13,7 @@
       />
       <Reload @click="handleReload" :loading="list.loading" />
       <TagFilter v-if="options.doctype === 'HD Ticket'" />
-      <Filter :default_filters="defaultParams.filters" />
+      <Filter ref="filterRef" :default_filters="defaultParams.filters" />
       <SortBy :hide-label="isMobileView" />
       <ColumnSettings
         :hide-label="isMobileView"
@@ -209,6 +209,7 @@ const { $dialog } = globalStore();
 const { getStatus } = useTicketStatusStore();
 
 const listSelections = ref(new Set());
+const filterRef = ref();
 const defaultOptions = reactive({
   doctype: "",
   hideViewControls: false,
@@ -658,13 +659,18 @@ function handleViewChanges() {
     router.push({ name: route.name });
     reload(true);
     advancedFiltersJson.value = [];
+    // Clear filter component state
+    filterRef.value?.clearfilter();
     return;
   }
   defaultParams.filters = currentView.filters;
   defaultParams.order_by = currentView.order_by || "modified desc";
   defaultParams.columns = currentView.columns;
   defaultParams.rows = currentView.rows;
-  
+
+  // Clear existing filter component state before applying new view filters
+  filterRef.value?.clearfilter();
+
   // Restore advanced filters if present in the view
   if ((currentView as any).advanced_filters_json) {
     try {

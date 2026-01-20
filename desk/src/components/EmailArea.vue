@@ -83,7 +83,7 @@
 
     <!-- Collapsed preview: show truncated text preview -->
     <div v-if="!isExpanded" class="mt-2">
-      <p class="text-sm text-gray-500 line-clamp-2">
+      <p class="text-sm text-gray-500 line-clamp-3">
         {{ contentPreview }}
       </p>
     </div>
@@ -183,8 +183,8 @@ const contentPreview = computed(() => {
   const tempDiv = document.createElement("div");
   tempDiv.innerHTML = content;
   const textContent = tempDiv.textContent || tempDiv.innerText || "";
-  // Clean up whitespace and limit length
-  return textContent.replace(/\s+/g, " ").trim().substring(0, 200);
+  // Clean up whitespace and limit length to show more content
+  return textContent.replace(/\s+/g, " ").trim().substring(0, 400);
 });
 
 const status = computed(() => {

@@ -953,4 +953,8 @@ const timespanOptions = [
     value: "next year",
   },
 ];
+
+defineExpose({
+  clearfilter,
+});
 </script>
