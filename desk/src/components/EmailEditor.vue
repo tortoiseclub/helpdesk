@@ -246,7 +246,7 @@ const label = computed(() => {
   return sendMail.loading ? "Sending..." : props.label;
 });
 
-const emit = defineEmits(["submit", "discard"]);
+const emit = defineEmits(["submit", "discard", "email-sent"]);
 
 const { updateOnboardingStep } = useOnboarding("helpdesk");
 const { isManager } = useAuthStore();
@@ -439,6 +439,12 @@ const sendMail = createResource({
   onSuccess: () => {
     resetState();
     clearDraft();
+    // Emit a dedicated event so parents can react to a successful send
+    emit("email-sent", {
+      ticketId: props.ticketId,
+      communicationId: props.communicationId,
+    });
+    // Keep existing submit event for backwards compatibility
     emit("submit");
 
     if (isManager) {

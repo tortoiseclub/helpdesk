@@ -47,14 +47,8 @@
         :to-emails="toEmails"
         :cc-emails="ccEmails"
         :bcc-emails="bccEmails"
-        @submit="
-          () => {
-            showEmailBox = false;
-            isEmailBoxMinimized.value = false;
-            currentCommunicationId = null;
-            emit('update');
-          }
-        "
+        @submit="handleEmailSent"
+        @email-sent="handleEmailSent"
         @discard="
           () => {
             showEmailBox = false;
@@ -193,15 +187,22 @@ function toggleCommentBox() {
 }
 
 function submitEmail() {
-  if (emailEditorRef.value.submitMail()) {
-    emit("update");
-  }
+  // Trigger the editor's submit logic; success handling is centralized
+  // in handleEmailSent, which is called via the editor's events.
+  emailEditorRef.value.submitMail();
 }
 
 function submitComment() {
   if (commentTextEditorRef.value.submitComment()) {
     emit("update");
   }
+}
+
+function handleEmailSent() {
+  showEmailBox.value = false;
+  isEmailBoxMinimized.value = false;
+  currentCommunicationId.value = null;
+  emit("update");
 }
 
 function splitIfString(str: string | string[]) {
