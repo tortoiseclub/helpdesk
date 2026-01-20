@@ -148,6 +148,7 @@ import { __ } from "@/translation";
 import {
   AxisChart,
   createResource,
+  DateRangePicker,
   dayjs,
   DonutChart,
   Dropdown,
@@ -155,7 +156,7 @@ import {
   Tooltip,
   usePageMeta,
 } from "frappe-ui";
-import { computed, h, onMounted, reactive, ref, watch } from "vue";
+import { computed, h, nextTick, onMounted, reactive, ref, watch } from "vue";
 
 const { isManager, userId } = useAuthStore();
 
@@ -265,7 +266,7 @@ function getLastXDays(range: number = 30): string {
 }
 
 const showDatePicker = ref(false);
-const datePickerRef = ref(null);
+const datePickerRef = ref<{ open: () => void } | null>(null);
 const preset = ref(__("Last 30 Days"));
 
 const options = computed(() => [
@@ -314,9 +315,9 @@ const options = computed(() => [
     label: __("Custom Range"),
     onClick: () => {
       showDatePicker.value = true;
-      setTimeout(() => {
+      nextTick(() => {
         datePickerRef.value?.open();
-      }, 0);
+      });
       preset.value = __("Custom Range");
       filters.period = null; // Reset period to allow custom date selection
     },

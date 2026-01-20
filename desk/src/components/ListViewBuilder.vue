@@ -649,8 +649,7 @@ const canSaveView = computed(() => {
 });
 
 function handleReload() {
-  // Just reload the current data without changing filters or view state
-  list.submit({ ...defaultParams });
+  handleViewChanges();
   isViewUpdated.value = false;
 }
 
