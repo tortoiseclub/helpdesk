@@ -28,12 +28,14 @@ def get_dashboard_data(
     """
     Get dashboard data based on the type and date range.
     """
+    filters = filters or {}
+
     user = frappe.session.user
     is_manager = "Agent Manager" in frappe.get_roles(user)
 
     if not is_manager and (filters.get("agent") != user or filters.get("team")):
         frappe.throw(
-            _("You are not allowed to view this dashboard data."),
+            _("You can only view your own dashboard data and cannot filter by team."),
             frappe.PermissionError,
         )
         return

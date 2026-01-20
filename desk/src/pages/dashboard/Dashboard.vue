@@ -79,6 +79,12 @@
           </template>
         </Link>
       </div>
+      <div
+        v-if="!isManager"
+        class="mb-2 text-xs text-ink-gray-6"
+      >
+        {{ __("You are viewing your own stats.") }}
+      </div>
       <!-- Charts -->
       <div v-if="!loading" class="transition-all animate-fade-in duration-300">
         <!-- Number Cards -->
