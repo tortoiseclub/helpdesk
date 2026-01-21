@@ -422,8 +422,15 @@ def get_master_dashboard_data(
     ticket_type_data = get_ticket_type_chart_data(from_date, to_date, filters)
     ticket_priority_data = get_ticket_priority_chart_data(from_date, to_date, filters)
     ticket_channel_data = get_ticket_channel_chart_data(from_date, to_date, filters)
+    ticket_customer_data = get_ticket_customer_chart_data(from_date, to_date, filters)
 
-    return [team_data, ticket_type_data, ticket_priority_data, ticket_channel_data]
+    return [
+        ticket_customer_data,
+        team_data,
+        ticket_type_data,
+        ticket_priority_data,
+        ticket_channel_data,
+    ]
 
 
 def get_team_chart_data(
@@ -557,6 +564,48 @@ def get_ticket_channel_chart_data(
         "channel",
         "count",
     )
+
+
+def get_ticket_customer_chart_data(
+    from_date: str, to_date: str, filters: dict[str, any] = None
+) -> dict[str, any]:
+    """
+    Get ticket customer chart data for the dashboard.
+    """
+    result = frappe.get_all(
+        HD_TICKET,
+        fields=["customer as customer", COUNT_NAME],
+        filters=filters,
+        group_by="customer",
+        order_by=COUNT_DESC,
+    )
+
+    for r in result:
+        if not r.customer:
+            r.customer = _("No Customer")
+
+    if len(result) < 7:
+        return get_pie_chart_config(
+            result,
+            _("Tickets by Customer"),
+            _("Percentage of Total Tickets by Customer"),
+            "customer",
+            "count",
+        )
+    else:
+        return get_bar_chart_config(
+            result,
+            _("Tickets by Customer"),
+            _("Total Tickets by Customer"),
+            {
+                "key": "customer",
+                "type": "category",
+                "title": "Customer",
+                "timeGrain": "day",
+            },
+            "Tickets",
+            [{"name": "count", "type": "bar"}],
+        )
 
 
 def get_pie_chart_config(
