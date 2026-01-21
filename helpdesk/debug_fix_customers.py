@@ -39,6 +39,27 @@ def _extract_email_from_raised_by(raised_by: str) -> str | None:
     return None
 
 
+def _extract_email_from_contact(contact: str) -> str | None:
+    """
+    Extract email from contact, skipping tortoise.pro emails.
+    
+    :param contact: Contact document dict
+    :return: Email address if valid and not tortoise.pro, None otherwise
+    """
+    if not contact:
+        return None
+
+    try:
+        contact_doc = frappe.get_doc("Contact", contact)
+        if contact_doc and contact_doc.email_id:
+            return contact_doc.email_id
+    except Exception as e:
+        print(f"Error extracting email from contact {contact}: {str(e)}")
+        return None
+    
+    return None
+
+
 def _extract_email_from_participants(participant_emails: str) -> str | None:
     """
     Extract first valid email from participant_emails, skipping tortoise.pro emails.
@@ -66,12 +87,7 @@ def _resolve_email_for_ticket(ticket: dict) -> str | None:
     :param ticket: Ticket document dict
     :return: Valid email address (not tortoise.pro), None if none found
     """
-    # Try raised_by first
-    if ticket.get("raised_by"):
-        email = _extract_email_from_raised_by(ticket["raised_by"])
-        if email:
-            return email
-    
+
     # Fallback to participant_emails
     if ticket.get("participant_emails"):
         email = _extract_email_from_participants(ticket["participant_emails"])
@@ -147,33 +163,53 @@ def fix_tickets_without_customer(dry_run: bool = True, limit: int | None = None)
             print(f"⏭️  {ticket_name}: Skipped - no contact linked")
             stats["skipped_no_contact"] += 1
             continue
-        
-        # Resolve email address
-        email_id = _resolve_email_for_ticket(ticket)
-        if not email_id:
+
+        # Try all non-tortoise.pro participant_emails as well as fallback to subject for email
+        candidate_emails = set()
+
+        # Collect participant_emails if present and not tortoise.pro
+        participant_emails_str = ticket.get("participant_emails", "")
+        if participant_emails_str:
+            emails = [parseaddr(e.strip())[1] for e in participant_emails_str.split(",")]
+            for email in emails:
+                if email and "tortoise.pro" not in email.lower():
+                    candidate_emails.add(email)
+
+        # Fallback: If no valid participant_emails, try extracting from subject
+        if not candidate_emails and ticket.get("subject"):
+            fallback_email = get_email_from_subject(ticket["subject"])
+            if fallback_email and "tortoise.pro" not in fallback_email.lower():
+                candidate_emails.add(fallback_email)
+
+        if not candidate_emails:
             print(f"⏭️  {ticket_name}: Skipped - no valid email found (avoiding tortoise.pro)")
             stats["skipped_no_email"] += 1
             continue
+
+        found_customer = False
+        for email_id in candidate_emails:
+            try:
+                customers = get_customer(ticket["contact"], email_id)
+            except Exception as e:
+                continue
+
+            if not customers:
+                continue
+            if len(customers) == 1:
+                found_customer = True
+                break
+            else:
+                print(f"⏭️  {ticket_name}: Skipped - multiple customers found ({len(customers)}): {', '.join(customers)}")
+                stats["skipped_multiple_customers"] += 1
+                # If there are multiple customers for this email, try next email
+                continue
         
-        # Get customer using get_customer()
-        try:
-            customers = get_customer(ticket["contact"], email_id)
-        except Exception as e:
-            print(f"❌ {ticket_name}: Error calling get_customer() - {str(e)}")
+
+        if not found_customer:
+            print(f"⏭️  {ticket_name}: Skipped - no customers found for contact '{ticket['contact']}' and emails '{', '.join(candidate_emails)}'")
             stats["skipped_no_customers"] += 1
             continue
-        
-        # Only proceed if exactly 1 customer found
-        if not customers:
-            print(f"⏭️  {ticket_name}: Skipped - no customers found for contact '{ticket['contact']}' and email '{email_id}'")
-            stats["skipped_no_customers"] += 1
-            continue
-        
-        if len(customers) > 1:
-            print(f"⏭️  {ticket_name}: Skipped - multiple customers found ({len(customers)}): {', '.join(customers)}")
-            stats["skipped_multiple_customers"] += 1
-            continue
-        
+
         # Exactly 1 customer - update ticket
         customer_name = customers[0]
         
@@ -217,4 +253,4 @@ def execute():
     Usage: bench --site <site> execute helpdesk.debug_fix_customers.execute
     """
     # Default to dry-run with limit for safety
-    fix_tickets_without_customer(dry_run=False, limit=500)
+    fix_tickets_without_customer(dry_run=True, limit=10)
