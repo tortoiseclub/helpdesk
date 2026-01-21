@@ -39,6 +39,7 @@ from helpdesk.utils import (
     is_admin,
     is_agent,
     publish_event,
+    get_email_from_subject,
 )
 
 from ..hd_notification.utils import clear as clear_notifications
@@ -364,7 +365,7 @@ class HDTicket(Document):
             return
 
         if self.contact:
-            customer = get_customer(self.contact, email_id=parseaddr(self.raised_by)[1])
+            customer = get_customer(self.contact, email_id=(parseaddr(self.raised_by)[1] or get_email_from_subject(self.subject)))
 
             # let agent assign the customer when one contact has more than one customer
             if len(customer) == 1:

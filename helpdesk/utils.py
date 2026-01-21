@@ -133,6 +133,31 @@ def get_customers_for_domain(domain: str) -> list[str]:
     return [customer.name for customer in hd_customers]
 
 
+def get_email_from_subject(subject: str) -> str | None:
+    """
+    Get email from subject
+
+    :param subject: Subject to search for
+    :return: Email if available
+    """
+    import re
+    if not subject:
+        return None
+
+    # First try to find email in angle brackets (existing behavior)
+    email = re.search(r"<([^>]+@[^>]+)>", subject)
+    if email:
+        return email.group(1)
+
+    # If no angle bracket email found, try to find any email address
+    # More comprehensive email regex pattern
+    email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+    email = re.search(email_pattern, subject)
+    if email:
+        return email.group(0)
+
+    return None
+
 def extract_mentions(html):
     if not html:
         return []
