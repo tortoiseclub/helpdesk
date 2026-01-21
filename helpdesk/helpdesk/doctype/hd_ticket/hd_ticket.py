@@ -334,7 +334,16 @@ class HDTicket(Document):
         self.ticket_type = ticket_type
 
     def set_raised_by(self):
-        self.raised_by = self.raised_by or frappe.session.user
+        if self.participant_emails and len(self.participant_emails) > 0:
+            participant_emails = self.participant_emails.split(",")
+            for email_id in participant_emails:
+                email_id = parseaddr(email_id)[1]
+                if "tortoise.pro" in email_id:
+                    continue
+                self.raised_by = email_id
+                return
+        else:
+            self.raised_by = self.raised_by or frappe.session.user
 
     def set_contact(self):
         email_id = parseaddr(self.raised_by)[1]
@@ -355,7 +364,7 @@ class HDTicket(Document):
             return
 
         if self.contact:
-            customer = get_customer(self.contact)
+            customer = get_customer(self.contact, email_id=parseaddr(self.raised_by)[1])
 
             # let agent assign the customer when one contact has more than one customer
             if len(customer) == 1:

@@ -88,7 +88,7 @@ def capture_event(event: str):
     return _capture(event, "helpdesk")
 
 
-def get_customer(contact: str) -> tuple[str]:
+def get_customer(contact: str, email_id: str = None) -> tuple[str]:
     """
     Get `Customer` from `Contact`
 
@@ -98,7 +98,7 @@ def get_customer(contact: str) -> tuple[str]:
     QBDynamicLink = frappe.qb.DocType("Dynamic Link")
     QBContact = frappe.qb.DocType("Contact")
     conditions = [QBDynamicLink.parent == contact, QBContact.email_id == contact]
-    return [
+    results = [
         i[0]
         for i in (
             frappe.qb.from_(QBDynamicLink)
@@ -112,6 +112,25 @@ def get_customer(contact: str) -> tuple[str]:
             .run()
         )
     ]
+    if results:
+        return results
+    if not email_id:
+        return []
+    domain = email_id.split("@")[1]
+    return get_customers_for_domain(domain)
+
+
+def get_customers_for_domain(domain: str) -> list[str]:
+    """
+    Get `Customer` from `domain`
+
+    :param domain: Domain to search for
+    :return: Customer `name` if available
+    """
+    hd_customers = frappe.get_all(
+        "HD Customer", filters=[["domain", "like", f"%{domain}%"]], fields=["name"]
+    )
+    return [customer.name for customer in hd_customers]
 
 
 def extract_mentions(html):
