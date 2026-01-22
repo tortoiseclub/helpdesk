@@ -1,5 +1,5 @@
 from email import message_from_string
-
+import re
 import frappe
 from frappe import _
 from frappe.email.doctype.email_account.email_account import EmailAccount
@@ -25,6 +25,12 @@ class CustomInboundMail(InboundMail):
             if data.get(field):
                 data[field] = sanitize_email(data[field])
         return data
+
+    def get_reference_name_from_subject(self):
+        """
+        Ex: "Re [#123456]: Your email"
+        """
+        return re.search(r"#(\d+)", self.subject).group(1)
 
 
 class CustomEmailAccount(EmailAccount):

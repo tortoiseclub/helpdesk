@@ -662,7 +662,7 @@ class HDTicket(Document):
     ):
         skip_email_workflow = self.skip_email_workflow()
         medium = "" if skip_email_workflow else "Email"
-        subject = f"Re: {self.subject}"
+        subject = f"Re [#{self.name}]: {self.subject}"
         sender = frappe.session.user
         recipients = to or self.raised_by
         sender_email = None if skip_email_workflow else self.sender_email()
@@ -1031,6 +1031,31 @@ class HDTicket(Document):
         if not self.agent_group:
             self.auto_assign_team_by_conditions()
         
+
+        if not self.customer:
+            potential_emails: list[str] = []
+            if self.subject and get_email_from_subject(self.subject):
+                potential_emails.append(get_email_from_subject(self.subject))
+            if self.participant_emails:
+                potential_emails.extend(self.participant_emails.split(","))
+            for email in potential_emails:
+                email = email.strip()
+                if not email or not self.contact:
+                    continue
+                if isinstance(self.contact, str):
+                    contact = self.contact
+                elif isinstance(self.contact, dict):
+                    contact = self.contact.get("name")
+                elif hasattr(self.contact, "name"):
+                    contact = self.contact.name
+                else:
+                    continue
+                
+                customer = get_customer(contact=contact, email_id=email)
+                if customer:
+                    self.customer = customer[0]
+                    break
+
         # Save the ticket, allowing for hooks to run.
         self.save()
         
@@ -1109,7 +1134,6 @@ class HDTicket(Document):
             if email.lower() not in seen_lower:
                 final_emails.append(email)
                 seen_lower.add(email.lower())
-        
         self.participant_emails = ",".join(final_emails) if final_emails else None
 
     def _extract_emails_from_string(self, email_string: str) -> set:
