@@ -30,7 +30,10 @@ class CustomInboundMail(InboundMail):
         """
         Ex: "Re [#123456]: Your email"
         """
-        return re.search(r"#(\d+)", self.subject).group(1)
+        try:
+            return re.search(r"#(\d+)", self.subject).group(1)
+        except Exception:
+            return None
 
 
 class CustomEmailAccount(EmailAccount):
