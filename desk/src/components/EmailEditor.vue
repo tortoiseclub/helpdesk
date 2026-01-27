@@ -577,6 +577,7 @@ function addToReply(
   editorRef.value.editor
     .chain()
     .clearContent()
+    .insertContent(body)
     .focus("all")
     .setBlockquote()
     .insertContentAt(0, { type: "paragraph" })
