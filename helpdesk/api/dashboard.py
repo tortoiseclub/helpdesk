@@ -44,6 +44,7 @@ def get_dashboard_data(
     to_date = filters.get("to_date") if filters else None
     team = filters.get("team") if filters else None
     agent = filters.get("agent") if filters else None
+    customer = filters.get("customer") if filters else None
 
     if agent == "@me":
         agent = frappe.session.user
@@ -58,6 +59,7 @@ def get_dashboard_data(
         to_date=to_date,
         team=team,
         agent=agent,
+        customer=customer,
     )
 
     dashboard = HelpdeskDashboard(_filters)
@@ -66,7 +68,7 @@ def get_dashboard_data(
         return dashboard.get_number_card_data()
     elif dashboard_type == "master":
         return get_master_dashboard_data(
-            from_date, to_date, _filters.team, _filters.agent
+            from_date, to_date, _filters.team, _filters.agent, _filters.customer
         )
     elif dashboard_type == "trend":
         return dashboard.get_trend_data()
@@ -79,6 +81,7 @@ class HelpdeskDashboard:
         self.to_date = filters.get("to_date")
         self.team = filters.get("team")
         self.agent = filters.get("agent")
+        self.customer = filters.get("customer")
 
         self.ticket = DocType("HD Ticket")
         self.qb_conds = self._get_conditions()
@@ -114,6 +117,8 @@ class HelpdeskDashboard:
                     "JSON_SEARCH", self.ticket._assign, "one", self.agent
                 ).isnotnull()
             )
+        if self.customer:
+            conds.append(self.ticket.customer == self.customer)
         return conds
 
     def _get_case(self, start, end, value, func, extra_cond=None):
@@ -409,7 +414,11 @@ class HelpdeskDashboard:
 
 
 def get_master_dashboard_data(
-    from_date: str, to_date: str, team: str = None, agent: str = None
+    from_date: str,
+    to_date: str,
+    team: str = None,
+    agent: str = None,
+    customer: str = None,
 ) -> list[dict[str, any]]:
     filters = {
         "creation": ["between", [from_date, to_date]],
@@ -418,6 +427,8 @@ def get_master_dashboard_data(
         filters["agent_group"] = team
     if agent:
         filters["_assign"] = ["like", f"%{agent}%"]
+    if customer:
+        filters["customer"] = customer
     team_data = get_team_chart_data(from_date, to_date, filters)
     ticket_type_data = get_ticket_type_chart_data(from_date, to_date, filters)
     ticket_priority_data = get_ticket_priority_chart_data(from_date, to_date, filters)
@@ -469,6 +480,10 @@ def get_ticket_tag_chart_data(
     ):
         assign_like = assign_filter[1]
         conds.append(ticket._assign.like(assign_like))
+
+    customer = filters.get("customer")
+    if customer:
+        conds.append(ticket.customer == customer)
 
     combined_cond = reduce(operator.and_, conds)
 

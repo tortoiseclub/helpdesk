@@ -78,6 +78,18 @@
             <LucideUser class="size-4 text-ink-gray-5 mr-2" />
           </template>
         </Link>
+        <Link
+          class="form-control w-48"
+          doctype="HD Customer"
+          :placeholder="__('Customer')"
+          v-model="filters.customer"
+          :page-length="5"
+          :hide-me="true"
+        >
+          <template #prefix>
+            <LucideUser class="size-4 text-ink-gray-5 mr-2" />
+          </template>
+        </Link>
       </div>
       <div
         v-if="!isManager"
@@ -164,6 +176,7 @@ const filters = reactive({
   period: getLastXDays(),
   agent: null,
   team: null,
+  customer: null,
 });
 
 const colors = [
@@ -357,6 +370,7 @@ watch(
       to_date: newVal.period?.split(",")[1] || null,
       agent: newVal.agent || null,
       team: newVal.team || null,
+      customer: newVal.customer || null,
     };
 
     numberCards.update({
