@@ -107,7 +107,8 @@ class HelpdeskDashboard:
         )
 
     def _get_conditions(self):
-        conds = []
+        # Exclude Outreach tickets from all dashboard metrics
+        conds = [self.ticket.ticket_type != "Outreach"]
         if self.team:
             conds.append(self.ticket.agent_group == self.team)
         if self.agent:
@@ -423,6 +424,8 @@ def get_master_dashboard_data(
     filters = {
         "creation": ["between", [from_date, to_date]],
     }
+    # Exclude Outreach tickets from all master dashboard metrics
+    filters["ticket_type"] = ["!=", "Outreach"]
     if team:
         filters["agent_group"] = team
     if agent:
@@ -465,6 +468,8 @@ def get_ticket_tag_chart_data(
         tag_link.document_name == ticket.name,
         ticket.creation >= from_date,
         ticket.creation < to_date_next,
+        # Exclude Outreach tickets from tag-based metrics
+        ticket.ticket_type != "Outreach",
     ]
 
     team = filters.get("agent_group")
