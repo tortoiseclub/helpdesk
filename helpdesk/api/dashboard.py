@@ -5,7 +5,7 @@ import frappe
 from frappe import _
 from frappe.query_builder import DocType
 from frappe.query_builder.functions import Avg, Count, Function
-from pypika import Case
+from pypika import Case, Order
 
 from helpdesk.utils import agent_only, is_frappe_version
 
@@ -423,6 +423,7 @@ def get_master_dashboard_data(
     ticket_priority_data = get_ticket_priority_chart_data(from_date, to_date, filters)
     ticket_channel_data = get_ticket_channel_chart_data(from_date, to_date, filters)
     ticket_customer_data = get_ticket_customer_chart_data(from_date, to_date, filters)
+    ticket_tag_data = get_ticket_tag_chart_data(from_date, to_date, filters)
 
     return [
         ticket_customer_data,
@@ -430,7 +431,97 @@ def get_master_dashboard_data(
         ticket_type_data,
         ticket_priority_data,
         ticket_channel_data,
+        ticket_tag_data,
     ]
+
+
+def get_ticket_tag_chart_data(
+    from_date: str, to_date: str, filters: dict[str, any] | None = None
+) -> dict[str, any]:
+    """
+    Get ticket tag chart data for the dashboard using Tag Link as a through table.
+    """
+    filters = filters or {}
+
+    ticket = DocType(HD_TICKET)
+    tag_link = DocType("Tag Link")
+
+    # Mirror the inclusive upper-bound behavior used elsewhere by extending to_date by one day
+    to_date_next = frappe.utils.add_days(to_date, 1)
+
+    conds = [
+        tag_link.document_type == HD_TICKET,
+        tag_link.document_name == ticket.name,
+        ticket.creation >= from_date,
+        ticket.creation < to_date_next,
+    ]
+
+    team = filters.get("agent_group")
+    if team:
+        conds.append(ticket.agent_group == team)
+
+    assign_filter = filters.get("_assign")
+    if (
+        isinstance(assign_filter, (list, tuple))
+        and len(assign_filter) == 2
+        and isinstance(assign_filter[0], str)
+        and assign_filter[0].lower() == "like"
+    ):
+        assign_like = assign_filter[1]
+        conds.append(ticket._assign.like(assign_like))
+
+    combined_cond = reduce(operator.and_, conds)
+
+    query = (
+        frappe.qb.from_(tag_link)
+        .join(ticket)
+        .on(
+            (tag_link.document_type == HD_TICKET)
+            & (tag_link.document_name == ticket.name)
+        )
+        .select(tag_link.tag.as_("tag"), Count(ticket.name).as_("count"))
+        .where(combined_cond)
+        .groupby(tag_link.tag)
+        .orderby(Count(ticket.name), order=Order.desc)
+        .limit(10)
+    )
+
+    result = query.run(as_dict=True) or []
+
+    title = _("Tickets by Tag")
+
+    if not result:
+        # Return an empty but valid config so the UI can render gracefully
+        return get_pie_chart_config(
+            [],
+            title,
+            _("Percentage of Total Tickets by Tag"),
+            "tag",
+            "count",
+        )
+
+    if len(result) < 7:
+        return get_pie_chart_config(
+            result,
+            title,
+            _("Percentage of Total Tickets by Tag"),
+            "tag",
+            "count",
+        )
+    else:
+        return get_bar_chart_config(
+            result,
+            title,
+            _("Total Tickets by Tag"),
+            {
+                "key": "tag",
+                "type": "category",
+                "title": "Tag",
+                "timeGrain": "day",
+            },
+            _("Tickets"),
+            [{"name": "count", "type": "bar"}],
+        )
 
 
 def get_team_chart_data(
