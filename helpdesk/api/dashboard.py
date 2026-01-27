@@ -427,11 +427,11 @@ def get_master_dashboard_data(
 
     return [
         ticket_customer_data,
+        ticket_tag_data,
         team_data,
         ticket_type_data,
         ticket_priority_data,
         ticket_channel_data,
-        ticket_tag_data,
     ]
 
 
