@@ -951,19 +951,42 @@ class HDTicket(Document):
             if existing_log.last_reply_sent and existing_log.last_reply_sent > cutoff_date:
                 return  # Already sent recently, skip
 
-        # Send the auto-reply email
+        # Prepare the auto-reply email content
         email_content = settings.non_work_email_content
         default_content = get_default_email_content("non_work_email_reply")
+        subject = f"Please use your work email - Ticket #{self.name}"
+        rendered_message = self._get_rendered_template(
+            email_content, default_content, {"sender_email": sender_email}
+        )
 
         try:
+            # Create Communication document first (so it appears in ticket trail)
+            communication = frappe.get_doc(
+                {
+                    "doctype": "Communication",
+                    "communication_type": "Communication",
+                    "communication_medium": "Email",
+                    "sent_or_received": "Sent",
+                    "status": "Linked",
+                    "reference_doctype": "HD Ticket",
+                    "reference_name": self.name,
+                    "sender": frappe.session.user or "Administrator",
+                    "recipients": sender_email,
+                    "subject": subject,
+                    "content": rendered_message,
+                    "email_status": "Open",
+                }
+            )
+            communication.insert(ignore_permissions=True)
+
+            # Send the actual email
             frappe.sendmail(
                 recipients=[sender_email],
-                subject=f"Please use your work email - Ticket #{self.name}",
-                message=self._get_rendered_template(
-                    email_content, default_content, {"sender_email": sender_email}
-                ),
+                subject=subject,
+                message=rendered_message,
                 reference_doctype="HD Ticket",
                 reference_name=self.name,
+                communication=communication.name,
                 now=True,
                 email_headers={"X-Auto-Generated": "hd-non-work-email-reply"},
             )
