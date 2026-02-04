@@ -2,7 +2,8 @@ export type NotificationName =
   | "share_feedback"
   | "acknowledgement"
   | "reply_to_agents"
-  | "reply_via_agent";
+  | "reply_via_agent"
+  | "non_work_email_reply";
 
 export type Notification = {
   name: NotificationName;

@@ -230,6 +230,10 @@ class HDTicket(Document):
         ):
             self.send_acknowledgement_email()
 
+        # Send non-work email auto-reply if applicable
+        if not self.via_customer_portal and not frappe.flags.initial_sync:
+            self.send_non_work_email_reply()
+
     def auto_assign_team_by_conditions(self):
         """
         Automatically assigns ticket to a team based on conditions defined in
@@ -906,6 +910,90 @@ class HDTicket(Document):
         except Exception as e:
             frappe.throw(
                 _("Could not send an acknowledgement email due to: {0}").format(e)
+            )
+
+    def send_non_work_email_reply(self):
+        """Send auto-reply if ticket is from non-work email domain"""
+        # Check if feature is enabled
+        settings = frappe.get_single("HD Settings")
+        if not settings.enable_non_work_email_reply:
+            return
+
+        # Extract email from raised_by
+        sender_email = parseaddr(self.raised_by)[1]
+        if not sender_email:
+            return
+
+        # Check if domain is in blacklist
+        domain = sender_email.split("@")[-1].lower()
+        blacklisted_domains = [
+            d.strip().lower()
+            for d in (settings.non_work_email_domains or "").split(",")
+            if d.strip()
+        ]
+
+        if domain not in blacklisted_domains:
+            return
+
+        # Check throttling - have we sent auto-reply recently?
+        throttle_days = settings.non_work_email_reply_throttle_days or 7
+        from frappe.utils import add_days, now_datetime
+
+        existing_log = frappe.db.get_value(
+            "HD Non Work Email Log",
+            {"email_address": sender_email},
+            ["name", "last_reply_sent", "reply_count"],
+            as_dict=True,
+        )
+
+        if existing_log:
+            cutoff_date = add_days(now_datetime(), -throttle_days)
+            if existing_log.last_reply_sent and existing_log.last_reply_sent > cutoff_date:
+                return  # Already sent recently, skip
+
+        # Send the auto-reply email
+        email_content = settings.non_work_email_content
+        default_content = get_default_email_content("non_work_email_reply")
+
+        try:
+            frappe.sendmail(
+                recipients=[sender_email],
+                subject=f"Please use your work email - Ticket #{self.name}",
+                message=self._get_rendered_template(
+                    email_content, default_content, {"sender_email": sender_email}
+                ),
+                reference_doctype="HD Ticket",
+                reference_name=self.name,
+                now=True,
+                email_headers={"X-Auto-Generated": "hd-non-work-email-reply"},
+            )
+
+            # Update tracking log
+            if existing_log:
+                frappe.db.set_value(
+                    "HD Non Work Email Log",
+                    existing_log.name,
+                    {
+                        "last_reply_sent": now_datetime(),
+                        "reply_count": (existing_log.reply_count or 0) + 1,
+                    },
+                )
+            else:
+                log_doc = frappe.get_doc(
+                    {
+                        "doctype": "HD Non Work Email Log",
+                        "email_address": sender_email,
+                        "last_reply_sent": now_datetime(),
+                        "reply_count": 1,
+                    }
+                )
+                log_doc.insert(ignore_permissions=True)
+
+        except Exception as e:
+            # Log error but don't block ticket creation
+            frappe.log_error(
+                title="Non-work email auto-reply failed",
+                message=f"Failed to send auto-reply to {sender_email}: {str(e)}",
             )
 
     @frappe.whitelist()

@@ -72,3 +72,19 @@ def get_default_email_content(type: str) -> str:
   <br />
 </div>
 """
+
+    if type == "non_work_email_reply":
+        return """\
+<p>Hello,</p>
+<p>Thank you for reaching out to us. We've received your email from <strong>{{ sender_email }}</strong>.</p>
+<p>We notice you're contacting us from a personal email account. For security and verification purposes, we kindly request that you reach out to us using your official work/company email address.</p>
+<p>This helps us:</p>
+<ul>
+  <li>Verify your identity and organization</li>
+  <li>Ensure proper routing to the right support team</li>
+  <li>Maintain our service level agreements</li>
+</ul>
+<p>Please resend your request from your work email address, and we'll be happy to assist you promptly.</p>
+<br />
+<p>Best regards,<br />Support Team</p>
+"""

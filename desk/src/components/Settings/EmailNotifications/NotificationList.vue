@@ -85,5 +85,12 @@ const notifications: AtLeastOneNotifcation = [
       "Sent to all of the recipients associated with an agent's reply"
     ),
   },
+  {
+    name: "non_work_email_reply",
+    label: __("Non-work email auto-reply"),
+    description: __(
+      "Sent to senders using non-work email addresses asking them to use official work email"
+    ),
+  },
 ];
 </script>

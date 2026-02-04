@@ -102,6 +102,7 @@ class HDSettings(Document):
             "acknowledgement_email_content",
             "reply_email_to_agent_content",
             "reply_via_agent_email_content",
+            "non_work_email_content",
         ]:
             if not self.has_value_changed(content_field_name):
                 continue

@@ -90,7 +90,12 @@
   "enable_reply_email_via_agent",
   "reply_via_agent_email_content",
   "always_cc_section",
-  "always_cc"
+  "always_cc",
+  "non_work_email_section",
+  "enable_non_work_email_reply",
+  "non_work_email_domains",
+  "non_work_email_reply_throttle_days",
+  "non_work_email_content"
  ],
  "fields": [
   {
@@ -605,6 +610,40 @@
    "fieldname": "disable_saved_replies_global_scope",
    "fieldtype": "Check",
    "label": "Disable saved replies with scope 'Global'"
+  },
+  {
+   "fieldname": "non_work_email_section",
+   "fieldtype": "Section Break",
+   "label": "Non-Work Email Auto-Reply"
+  },
+  {
+   "default": "0",
+   "description": "When enabled, an automated reply will be sent to senders using non-work email addresses (gmail, yahoo, outlook, etc.) asking them to use their official work email.",
+   "fieldname": "enable_non_work_email_reply",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "default": "gmail.com, yahoo.com, outlook.com, hotmail.com, yahoo.co.in, googlemail.com, live.com, msn.com, icloud.com, me.com, aol.com, protonmail.com, zoho.com, yandex.com, mail.com",
+   "depends_on": "eval:doc.enable_non_work_email_reply",
+   "description": "Comma-separated list of email domains considered as non-work/personal email providers.",
+   "fieldname": "non_work_email_domains",
+   "fieldtype": "Small Text",
+   "label": "Blacklisted Domains"
+  },
+  {
+   "default": "7",
+   "depends_on": "eval:doc.enable_non_work_email_reply",
+   "description": "Number of days to wait before sending another auto-reply to the same email address. This prevents spam.",
+   "fieldname": "non_work_email_reply_throttle_days",
+   "fieldtype": "Int",
+   "label": "Throttle Period (Days)"
+  },
+  {
+   "depends_on": "eval:doc.enable_non_work_email_reply",
+   "fieldname": "non_work_email_content",
+   "fieldtype": "Text",
+   "label": "Email Content"
   }
  ],
  "grid_page_length": 50,

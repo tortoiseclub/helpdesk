@@ -93,6 +93,27 @@ def get_reply_via_agent_data():
     }
 
 
+def get_non_work_email_reply_data():
+    enable_non_work_email_reply = bool(
+        frappe.db.get_single_value("HD Settings", "enable_non_work_email_reply")
+    )
+    email_content = frappe.db.get_single_value(
+        "HD Settings", "non_work_email_content"
+    )
+    domains = frappe.db.get_single_value("HD Settings", "non_work_email_domains")
+    throttle_days = frappe.db.get_single_value(
+        "HD Settings", "non_work_email_reply_throttle_days"
+    )
+    default_email_content = get_default_email_content("non_work_email_reply")
+    return {
+        "enabled": enable_non_work_email_reply,
+        "content": get_email_content(email_content, default_email_content),
+        "default_content": default_email_content,
+        "domains": domains or "",
+        "throttle_days": throttle_days or 7,
+    }
+
+
 @frappe.whitelist(methods=["GET"])
 def get_data(notification: str):
     only_for_managers()
@@ -108,6 +129,9 @@ def get_data(notification: str):
 
     if notification == "reply_via_agent":
         return get_reply_via_agent_data()
+
+    if notification == "non_work_email_reply":
+        return get_non_work_email_reply_data()
 
     frappe.throw(_("Invalid notification"))
 
@@ -188,3 +212,23 @@ def update_reply_via_agent(enabled: bool, content: str):
         "reply_via_agent_email_content",
         content,
     )
+
+
+@frappe.whitelist(methods=["PUT"])
+def update_non_work_email_reply(
+    enabled: bool, content: str, domains: str, throttle_days: int
+):
+    only_for_managers()
+    validate_template(content)
+    frappe.db.set_single_value("HD Settings", "enable_non_work_email_reply", int(enabled))
+    frappe.db.set_single_value("HD Settings", "non_work_email_content", content)
+    frappe.db.set_single_value("HD Settings", "non_work_email_domains", domains)
+    frappe.db.set_single_value(
+        "HD Settings", "non_work_email_reply_throttle_days", throttle_days
+    )
+    return {
+        "enabled": enabled,
+        "content": content,
+        "domains": domains,
+        "throttle_days": throttle_days,
+    }

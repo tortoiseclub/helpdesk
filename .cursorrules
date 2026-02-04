@@ -1,0 +1,58 @@
+# Project-Specific Rules for Frappe Helpdesk
+
+## Docker and Bench Management
+
+### Starting Bench Server
+- **Always check** if Docker containers are running before attempting any operations
+- **Check if bench is running** inside the frappe container before starting it
+- **Command to start bench**: 
+  ```bash
+  docker exec -d frappe_docker_devcontainer-frappe-1 bash -c "cd frappe-bench && nohup bench start > /tmp/bench.log 2>&1 &"
+  ```
+- **Verification**: Check with `docker exec frappe_docker_devcontainer-frappe-1 bash -c "pgrep -f 'bench start' | wc -l"`
+- **Location**: Always run bench commands from the `frappe-bench` directory inside the container
+
+## Frontend Build Configuration
+
+### Vue Application Build Settings
+- **Heap Size**: Always set Node.js heap size to **4096 MB** before building
+- **IMPORTANT**: Build commands must be run **inside the Docker container**, not on the host machine (to avoid esbuild platform mismatch)
+- **Command to build inside container**:
+  ```bash
+  docker exec frappe_docker_devcontainer-frappe-1 bash -c "cd frappe-bench/apps/helpdesk/desk && export NODE_OPTIONS=--max-old-space-size=4096 && yarn build"
+  ```
+- **Location**: Build commands must be run from the `desk` directory inside the container
+- **Important**: Set heap size in the same command session as the build to ensure it's applied
+- **Why inside container**: Node modules are installed for Linux platform inside Docker; building on macOS will cause esbuild platform mismatch errors
+
+### Development Server
+- **Dev server**: Can run on host: `cd desk && yarn dev`
+- **Or inside container**: `docker exec frappe_docker_devcontainer-frappe-1 bash -c "cd frappe-bench/apps/helpdesk/desk && yarn dev"`
+- **Heap size**: Also apply the 4096 MB limit for dev server if needed
+
+## Quick Reference Commands
+
+### Check Docker Status
+```bash
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+```
+
+### Check Bench Status
+```bash
+docker exec frappe_docker_devcontainer-frappe-1 bash -c "pgrep -f 'bench start' | wc -l"
+```
+
+### Run Migrations
+```bash
+docker exec frappe_docker_devcontainer-frappe-1 bash -c "cd frappe-bench && bench --site helpdesk.test migrate"
+```
+
+### Build Frontend (Inside Container)
+```bash
+docker exec frappe_docker_devcontainer-frappe-1 bash -c "cd frappe-bench/apps/helpdesk/desk && export NODE_OPTIONS=--max-old-space-size=4096 && yarn build"
+```
+
+## Notes
+- Docker container name: `frappe_docker_devcontainer-frappe-1`
+- Frappe bench location inside container: `/workspace/frappe-bench`
+- Frontend location: `apps/helpdesk/desk`
