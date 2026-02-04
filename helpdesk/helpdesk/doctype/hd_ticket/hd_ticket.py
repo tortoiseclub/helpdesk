@@ -954,7 +954,10 @@ class HDTicket(Document):
         # Prepare the auto-reply email content
         email_content = settings.non_work_email_content
         default_content = get_default_email_content("non_work_email_reply")
-        subject = f"Please use your work email - Ticket #{self.name}"
+        if f"#{self.name}" not in self.subject:
+            subject = f"Re [#{self.name}]: {self.subject}"
+        else:
+            subject = self.subject
         rendered_message = self._get_rendered_template(
             email_content, default_content, {"sender_email": sender_email}
         )
