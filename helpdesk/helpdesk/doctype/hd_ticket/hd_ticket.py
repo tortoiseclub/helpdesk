@@ -1,6 +1,6 @@
 import json
 import uuid
-from email.utils import parseaddr
+from email.utils import parseaddr, getaddresses
 from functools import lru_cache
 from typing import List
 
@@ -1262,21 +1262,12 @@ class HDTicket(Document):
         """
         if not email_string:
             return set()
-        
+
         emails = set()
-        # Split by comma to handle multiple addresses
-        parts = email_string.split(",")
-        
-        for part in parts:
-            part = part.strip()
-            if not part:
-                continue
-            
-            # Use parseaddr to extract email from formats like "Name <email>"
-            _, email = parseaddr(part)
+        for _, email in getaddresses([email_string]):
             if email:
                 emails.add(email)
-        
+
         return emails
 
     @frappe.whitelist()

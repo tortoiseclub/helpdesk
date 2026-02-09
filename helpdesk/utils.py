@@ -116,8 +116,10 @@ def get_customer(contact: str, email_id: str = None) -> tuple[str]:
         return results
     if not email_id:
         return []
-    domain = email_id.split("@")[1]
-    return get_customers_for_domain(domain)
+    splits = email_id.split("@")
+    if len(splits) > 1:
+        return get_customers_for_domain(splits[1])
+    return []
 
 
 def get_customers_for_domain(domain: str) -> list[str]:
