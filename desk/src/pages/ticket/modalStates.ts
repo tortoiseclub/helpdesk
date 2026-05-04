@@ -4,6 +4,7 @@ export const showAssignmentModal = ref(false);
 export const showEmailBox = ref(false);
 export const showCommentBox = ref(false);
 export const isEmailBoxMinimized = ref(false);
+export const showComposeEmailModal = ref(false);
 
 export function toggleEmailBox() {
   if (showCommentBox.value) {

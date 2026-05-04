@@ -777,6 +777,7 @@ class HDTicket(Document):
                 in_reply_to=(
                     last_communication.name if last_communication.name else None
                 ),
+                email_headers={"X-Auto-Generated": "hd-reply"},
             )
         except Exception as e:
             frappe.throw(_(e))
@@ -879,6 +880,7 @@ class HDTicket(Document):
                 reference_name=self.name,
                 now=True,
                 cc=always_cc if always_cc else None,
+                email_headers={"X-Auto-Generated": "hd-agent-notification"},
             )
         except Exception as e:
             frappe.throw(_(e))

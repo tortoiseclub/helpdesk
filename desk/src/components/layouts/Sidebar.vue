@@ -159,6 +159,10 @@
       :currentStep="currentStep"
     />
     <CP v-model="showCommandPalette" />
+    <ComposeEmailDialog
+      v-if="!isCustomerPortal"
+      v-model="showComposeEmailModal"
+    />
   </div>
 </template>
 
@@ -179,8 +183,10 @@ import { showNewContactModal } from "@/pages/desk/contact/dialogState";
 import {
   showAssignmentModal,
   showCommentBox,
+  showComposeEmailModal,
   showEmailBox,
 } from "@/pages/ticket/modalStates";
+import ComposeEmailDialog from "@/components/desk/global/ComposeEmailDialog.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useNotificationStore } from "@/stores/notification";
 import { useSidebarStore } from "@/stores/sidebar";

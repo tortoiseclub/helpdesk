@@ -11,6 +11,17 @@
         />
       </template>
       <template #right-header>
+        <Button
+          v-if="!isCustomerPortal"
+          :label="__('Compose')"
+          theme="gray"
+          variant="outline"
+          @click="showComposeEmailModal = true"
+        >
+          <template #prefix>
+            <LucideMail class="h-4 w-4" />
+          </template>
+        </Button>
         <RouterLink
           :to="{ name: isCustomerPortal ? 'TicketNew' : 'TicketAgentNew' }"
         >
@@ -56,6 +67,10 @@
       :ticketIds="Array.from(listSelections)"
       @success="handleBulkTagSuccess"
     />
+    <ComposeEmailDialog
+      v-if="!isCustomerPortal"
+      v-model="showComposeEmailModal"
+    />
   </div>
 </template>
 
@@ -68,6 +83,7 @@ import {
   TicketIcon,
   UnpinIcon,
 } from "@/components/icons";
+import ComposeEmailDialog from "@/components/desk/global/ComposeEmailDialog.vue";
 import ExportModal from "@/components/ticket/ExportModal.vue";
 import BulkTagModal from "@/components/modals/BulkTagModal.vue";
 import ViewBreadcrumbs from "@/components/ViewBreadcrumbs.vue";
@@ -77,11 +93,13 @@ import { dayjs } from "@/dayjs";
 import { useAuthStore } from "@/stores/auth";
 import { globalStore } from "@/stores/globalStore";
 import { useTicketStatusStore } from "@/stores/ticketStatus";
+import { showComposeEmailModal } from "@/pages/ticket/modalStates";
 import { View } from "@/types";
 import { getIcon, isCustomerPortal } from "@/utils";
 import { Badge, FeatherIcon, toast, Tooltip, usePageMeta } from "frappe-ui";
 import { computed, h, onMounted, onUnmounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import LucideMail from "~icons/lucide/mail";
 import LucideTag from "~icons/lucide/tag";
 import { __ } from "@/translation";
 
