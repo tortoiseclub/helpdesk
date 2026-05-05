@@ -254,6 +254,8 @@ class HelpdeskDashboard:
         open_status = "Open"
         closed_status = "Closed"
         sla_fulfilled_status = "SLA Fulfilled"
+        emails_sent_key = "Emails Sent"
+        emails_received_key = "Emails Received"
 
         base_cond = (self.ticket.creation > self.from_date) & (
             self.ticket.creation < self.to_date_next
@@ -290,9 +292,40 @@ class HelpdeskDashboard:
         )
 
         result = query.run(as_dict=True)
+
+        # Fetch per-day email counts and merge into the result rows
+        email_by_date = self._get_email_counts_by_date()
+        result_by_date = {str(row["date"]): row for row in result}
+        for date_str, email_row in email_by_date.items():
+            if date_str in result_by_date:
+                result_by_date[date_str][emails_sent_key] = email_row[emails_sent_key]
+                result_by_date[date_str][emails_received_key] = email_row[emails_received_key]
+            else:
+                result_by_date[date_str] = {
+                    "date": date_str,
+                    open_status: 0,
+                    closed_status: 0,
+                    sla_fulfilled_status: 0,
+                    emails_sent_key: email_row[emails_sent_key],
+                    emails_received_key: email_row[emails_received_key],
+                }
+        # Ensure all ticket rows have the email keys (default 0 for days with no emails)
+        for row in result:
+            row.setdefault(emails_sent_key, 0)
+            row.setdefault(emails_received_key, 0)
+
+        # Re-sort by date after merge
+        result = sorted(result_by_date.values(), key=lambda r: str(r["date"]))
+
         avg_tickets = self.get_avg_tickets_per_day()
-        subtitle = _("Average tickets per day is around {0}").format(
-            "{:.0f}".format(avg_tickets)
+        total_sent = sum(r.get(emails_sent_key, 0) or 0 for r in result)
+        total_received = sum(r.get(emails_received_key, 0) or 0 for r in result)
+        subtitle = _(
+            "Avg tickets/day: {0} · Emails sent: {1} · Emails received: {2}"
+        ).format(
+            "{:.0f}".format(avg_tickets),
+            total_sent,
+            total_received,
         )
 
         return get_bar_chart_config(
@@ -310,10 +343,84 @@ class HelpdeskDashboard:
                     "showDataPoints": True,
                     "axis": "y2",
                 },
+                {
+                    "name": emails_sent_key,
+                    "type": "line",
+                    "showDataPoints": True,
+                    "color": "#15CCEF",
+                },
+                {
+                    "name": emails_received_key,
+                    "type": "line",
+                    "showDataPoints": True,
+                    "color": "#F8814F",
+                },
             ],
             stacked=True,
             y2Axis={"title": "% SLA", "yMin": 0, "yMax": 100},
         )
+
+    def _get_email_counts_by_date(self) -> dict[str, dict]:
+        """
+        Returns a dict keyed by date string with Emails Sent and Emails Received counts,
+        scoped to Communications linked to HD Tickets within the current filter window.
+        """
+        comm = DocType("Communication")
+
+        base_cond = (
+            (comm.communication_medium == "Email")
+            & (comm.reference_doctype == "HD Ticket")
+            & (comm.creation >= self.from_date)
+            & (comm.creation < self.to_date_next)
+        )
+
+        # Apply team/agent/customer filters by joining to HD Ticket
+        if self.combined_cond:
+            ticket = self.ticket
+            query = (
+                frappe.qb.from_(comm)
+                .join(ticket)
+                .on(ticket.name == comm.reference_name)
+                .select(
+                    Function("DATE", comm.creation).as_("date"),
+                    Count(
+                        Case()
+                        .when(comm.sent_or_received == "Sent", comm.name)
+                        .else_(None)
+                    ).as_("Emails Sent"),
+                    Count(
+                        Case()
+                        .when(comm.sent_or_received == "Received", comm.name)
+                        .else_(None)
+                    ).as_("Emails Received"),
+                )
+                .where(base_cond & self.combined_cond)
+                .groupby(Function("DATE", comm.creation))
+                .orderby(Function("DATE", comm.creation))
+            )
+        else:
+            query = (
+                frappe.qb.from_(comm)
+                .select(
+                    Function("DATE", comm.creation).as_("date"),
+                    Count(
+                        Case()
+                        .when(comm.sent_or_received == "Sent", comm.name)
+                        .else_(None)
+                    ).as_("Emails Sent"),
+                    Count(
+                        Case()
+                        .when(comm.sent_or_received == "Received", comm.name)
+                        .else_(None)
+                    ).as_("Emails Received"),
+                )
+                .where(base_cond)
+                .groupby(Function("DATE", comm.creation))
+                .orderby(Function("DATE", comm.creation))
+            )
+
+        rows = query.run(as_dict=True) or []
+        return {str(row["date"]): row for row in rows}
 
     def get_feedback_trend_data(self):
         rating = "Rating"
@@ -449,6 +556,27 @@ def get_master_dashboard_data(
     ]
 
 
+# ---------------------------------------------------------------------------
+# Chart config helpers
+# ---------------------------------------------------------------------------
+
+# ECharts colorBy:'data' makes each bar in a single-series chart get its own
+# color from the palette, and the legend shows one entry per data point.
+# colorBy is injected via the series-level echartOptions (merged per-series),
+# while the legend override is injected via the top-level echartOptions.
+_COLOR_BY_DATA_SERIES_ECHART = {"colorBy": "data"}
+_LEGEND_SHOW_ECHART = {
+    "legend": {
+        "show": True,
+        "type": "scroll",
+        "bottom": 10,
+        "orient": "horizontal",
+        "itemGap": 12,
+        "padding": [0, 25],
+    },
+}
+
+
 def get_ticket_tag_chart_data(
     from_date: str, to_date: str, filters: dict[str, any] | None = None
 ) -> dict[str, any]:
@@ -508,6 +636,24 @@ def get_ticket_tag_chart_data(
 
     result = query.run(as_dict=True) or []
 
+    # Fetch the "Others" remainder count (tags beyond top 10)
+    others_query = (
+        frappe.qb.from_(tag_link)
+        .join(ticket)
+        .on(
+            (tag_link.document_type == HD_TICKET)
+            & (tag_link.document_name == ticket.name)
+        )
+        .select(Count(ticket.name).as_("count"))
+        .where(combined_cond)
+    )
+    total_result = others_query.run(as_dict=True)
+    total_count = total_result[0].count if total_result else 0
+    top10_count = sum(r.count for r in result)
+    others_count = total_count - top10_count
+    if others_count > 0:
+        result.append({"tag": _("Others"), "count": others_count})
+
     title = _("Tickets by Tag")
 
     if not result:
@@ -529,18 +675,13 @@ def get_ticket_tag_chart_data(
             "count",
         )
     else:
-        return get_bar_chart_config(
+        return get_horizontal_bar_chart_config(
             result,
             title,
-            _("Total Tickets by Tag"),
-            {
-                "key": "tag",
-                "type": "category",
-                "title": "Tag",
-                "timeGrain": "day",
-            },
-            _("Tickets"),
-            [{"name": "count", "type": "bar"}],
+            _("Top tags by ticket volume"),
+            "tag",
+            "count",
+            _("Tag"),
         )
 
 
@@ -556,10 +697,23 @@ def get_team_chart_data(
         filters=filters,
         group_by="agent_group",
         order_by=COUNT_DESC,
+        limit_page_length=10,
     )
     for r in result:
         if not r.team:
             r.team = _("No Team")
+
+    # Aggregate remaining teams beyond top 10 into "Others"
+    total_result = frappe.get_all(
+        HD_TICKET,
+        fields=[COUNT_NAME],
+        filters=filters,
+    )
+    total_count = total_result[0].count if total_result else 0
+    top10_count = sum(r.count for r in result)
+    others_count = total_count - top10_count
+    if others_count > 0:
+        result.append({"team": _("Others"), "count": others_count})
 
     if len(result) < 7:
         return get_pie_chart_config(
@@ -570,13 +724,13 @@ def get_team_chart_data(
             "count",
         )
     else:
-        return get_bar_chart_config(
+        return get_horizontal_bar_chart_config(
             result,
             _("Tickets by Team"),
-            _("Total Tickets by Team"),
-            {"key": "team", "type": "category", "title": "Team", "timeGrain": "day"},
-            "Tickets",
-            [{"name": "count", "type": "bar"}],
+            _("Top teams by ticket volume"),
+            "team",
+            "count",
+            _("Team"),
         )
 
 
@@ -610,6 +764,7 @@ def get_ticket_type_chart_data(
             {"key": "type", "type": "category", "title": "Type", "timeGrain": "day"},
             "Tickets",
             [{"name": "count", "type": "bar"}],
+            color_by_category=True,
         )
 
 
@@ -648,6 +803,7 @@ def get_ticket_priority_chart_data(
             },
             "Tickets",
             [{"name": "count", "type": "bar"}],
+            color_by_category=True,
         )
 
 
@@ -689,11 +845,24 @@ def get_ticket_customer_chart_data(
         filters=filters,
         group_by="customer",
         order_by=COUNT_DESC,
+        limit_page_length=10,
     )
 
     for r in result:
         if not r.customer:
             r.customer = _("No Customer")
+
+    # Aggregate remaining customers beyond top 10 into "Others"
+    total_result = frappe.get_all(
+        HD_TICKET,
+        fields=[COUNT_NAME],
+        filters=filters,
+    )
+    total_count = total_result[0].count if total_result else 0
+    top10_count = sum(r.count for r in result)
+    others_count = total_count - top10_count
+    if others_count > 0:
+        result.append({"customer": _("Others"), "count": others_count})
 
     if len(result) < 7:
         return get_pie_chart_config(
@@ -704,18 +873,13 @@ def get_ticket_customer_chart_data(
             "count",
         )
     else:
-        return get_bar_chart_config(
+        return get_horizontal_bar_chart_config(
             result,
             _("Tickets by Customer"),
-            _("Total Tickets by Customer"),
-            {
-                "key": "customer",
-                "type": "category",
-                "title": "Customer",
-                "timeGrain": "day",
-            },
-            "Tickets",
-            [{"name": "count", "type": "bar"}],
+            _("Top customers by ticket volume"),
+            "customer",
+            "count",
+            _("Customer"),
         )
 
 
@@ -743,9 +907,19 @@ def get_bar_chart_config(
     x_axis_config: dict[str, any],
     y_axis_title: str,
     series: list,
+    color_by_category: bool = False,
     **kwargs: dict[str, any],
 ) -> dict[str, any]:
-    return {
+    if color_by_category:
+        # Inject colorBy:'data' into each bar series via per-series echartOptions
+        # so mergeDeep doesn't overwrite the built series array.
+        series = [
+            dict(s, echartOptions=_COLOR_BY_DATA_SERIES_ECHART)
+            if s.get("type") == "bar"
+            else s
+            for s in series
+        ]
+    config = {
         "type": "axis",
         "data": data,
         "title": title,
@@ -754,4 +928,46 @@ def get_bar_chart_config(
         "yAxis": {"title": y_axis_title},
         "series": series,
         **kwargs,
+    }
+    if color_by_category:
+        config["echartOptions"] = _LEGEND_SHOW_ECHART
+    return config
+
+
+def get_horizontal_bar_chart_config(
+    data: list[dict[str, any]],
+    title: str,
+    subtitle: str,
+    category_key: str,
+    value_key: str,
+    category_title: str,
+) -> dict[str, any]:
+    """
+    Returns a horizontal bar chart config (swapXY=True) with one color per bar
+    and a scrollable legend, suitable for long category names (Customer, Team, Tag).
+    The category field is mapped to xAxis.key so frappe-ui's swapXY logic reads
+    the category from the correct column.
+    colorBy:'data' is injected via per-series echartOptions to avoid overwriting
+    the built series array during mergeDeep.
+    """
+    return {
+        "type": "axis",
+        "data": data,
+        "title": title,
+        "subtitle": subtitle,
+        "xAxis": {
+            "key": category_key,
+            "type": "category",
+            "title": category_title,
+        },
+        "yAxis": {"title": _("Tickets")},
+        "swapXY": True,
+        "series": [
+            {
+                "name": value_key,
+                "type": "bar",
+                "echartOptions": _COLOR_BY_DATA_SERIES_ECHART,
+            }
+        ],
+        "echartOptions": _LEGEND_SHOW_ECHART,
     }

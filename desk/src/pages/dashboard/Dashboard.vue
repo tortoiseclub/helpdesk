@@ -121,7 +121,7 @@
           v-if="!trendData.loading"
         >
           <div
-            class="border rounded-md min-h-80"
+            class="border rounded-md min-h-[360px]"
             v-for="(chart, index) in trendData.data"
             :key="index"
           >
@@ -134,7 +134,10 @@
           v-if="!masterData.loading"
         >
           <div
-            class="border rounded-md"
+            :class="[
+              'border rounded-md',
+              chart.swapXY ? 'min-h-[420px]' : 'min-h-80',
+            ]"
             v-for="(chart, index) in masterData.data"
             :key="index"
           >
