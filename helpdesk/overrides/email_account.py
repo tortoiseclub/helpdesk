@@ -35,6 +35,50 @@ class CustomInboundMail(InboundMail):
         except Exception:
             return None
 
+    def is_exist_in_system(self):
+        """
+        Extended deduplication check.
+
+        Frappe's default ``is_exist_in_system`` only matches inbound Communications
+        with the same Message-ID. We also match outbound (Sent) Communications so
+        that when one of our own outbound emails loops back to us (e.g. via a
+        group-inbox subscription like help@tortoise.pro -> support@tortoise.pro),
+        the inbound sync treats it as already-existing and skips creating a new
+        ticket instead of falling through to ``_create_reference_document``.
+
+        This relies on outbound Communication records having their ``message_id``
+        populated (see ``helpdesk.overrides.email_queue.sync_message_id_to_communication``).
+        """
+        from frappe.core.doctype.communication.communication import Communication
+
+        if not self.message_id:
+            return
+
+        comm = Communication.find_one_by_filters(
+            message_id=self.message_id,
+            sent_or_received="Received",
+            order_by="creation DESC",
+        )
+        if comm:
+            return comm
+
+        sent_comm = Communication.find_one_by_filters(
+            message_id=self.message_id,
+            sent_or_received="Sent",
+            order_by="creation DESC",
+        )
+        if sent_comm:
+            frappe.logger("helpdesk.email_loop").info(
+                "Suppressed inbound loop-back: message_id={0} matched outbound "
+                "Communication {1} (reference={2}/{3}); skipping new ticket creation".format(
+                    self.message_id,
+                    sent_comm.name,
+                    sent_comm.reference_doctype,
+                    sent_comm.reference_name,
+                )
+            )
+        return sent_comm
+
 
 class CustomEmailAccount(EmailAccount):
     def get_inbound_mails(self) -> list[InboundMail]:
